@@ -4,7 +4,7 @@
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v0.1.0, BMsql is a foundation project — it does not yet provide database commands, persistent storage, or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v0.1.0, BMsql is a foundation project with an in-memory `Database` type and a shared `BmsqlError` type. It does not yet provide database commands, persistent storage, or SQL.
 
 ---
 
@@ -27,9 +27,10 @@ This guide covers how to install, build, run, and verify BMsql at its current re
 
 BMsql v0.1.0 is the first release in a phased database engine project. This release focuses entirely on **Phase 0 — Foundation**:
 
-- A working Rust/Cargo project
-- A CLI entry point (`cargo run`)
-- A test harness (`cargo test`)
+- A working Rust/Cargo project (crate name: `bmsql`)
+- A library crate with `Database` and `BmsqlError` types
+- A CLI entry point (`cargo run`) that prints the database name and version
+- An integration test harness (`cargo test`)
 - Stable project layout
 
 There is no database file, no query language, and no persistent data in this version.
@@ -79,7 +80,7 @@ cargo build
 The compiled binary is placed at:
 
 ```text
-target/debug/BMsql
+target/debug/bmsql
 ```
 
 ### Check without producing a binary
@@ -103,16 +104,16 @@ cargo run
 Or run the compiled binary directly:
 
 ```bash
-./target/debug/BMsql
+./target/debug/bmsql
 ```
 
 **Expected output:**
 
 ```text
-Hello, world!
+BMSQL v0.1.0
 ```
 
-This confirms the project builds and the main entry point executes correctly.
+This confirms the project builds, the `Database` type is wired into the CLI, and the version from `Cargo.toml` is printed correctly.
 
 ---
 
@@ -124,12 +125,13 @@ Run the test suite:
 cargo test
 ```
 
-At v0.1.0, the test harness is set up but no unit tests are defined yet. A successful run looks like:
+At v0.1.0, one integration test verifies the `Database` name. A successful run looks like:
 
 ```text
-running 0 tests
+running 1 test
+test database_has_name ... ok
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```
 
 
@@ -146,7 +148,7 @@ cargo build --release
 The release binary is placed at:
 
 ```text
-target/release/BMsql
+target/release/bmsql
 ```
 
 Release builds are faster at runtime but take longer to compile. For development, the debug profile is sufficient.
@@ -160,8 +162,12 @@ Release builds are faster at runtime but take longer to compile. For development
 | Project compiles with `cargo build` | Yes |
 | CLI starts with `cargo run` | Yes |
 | Test command runs with `cargo test` | Yes |
+| `Database` type (in-memory, name only) | Yes |
+| `BmsqlError` type (`Io`, `InvalidInput`) | Yes |
+| Integration test for database name | Yes |
 | Project structure defined | Yes |
 | Version set to 0.1.0 in `Cargo.toml` | Yes |
+| Persistent storage or SQL | No |
 
 ---
 
@@ -189,7 +195,7 @@ Rust/Cargo is not installed or not on your `PATH`. Re-run the [rustup installer]
 
 Ensure you have write access to the project directory. Do not run `cargo` as root unless necessary.
 
-### `Hello, world!` does not appear
+### `BMSQL v0.1.0` does not appear
 
 Confirm you are in the project root (the directory containing `Cargo.toml`):
 
@@ -197,6 +203,8 @@ Confirm you are in the project root (the directory containing `Cargo.toml`):
 ls Cargo.toml
 cargo run
 ```
+
+You should see `BMSQL v0.1.0` printed to stdout.
 
 ---
 

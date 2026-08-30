@@ -1,4 +1,7 @@
+use bmsql::database::Database;
+
 #[test]
-fn bmsql_project_builds() {
-    assert_eq!(1 + 1, 2);
+fn database_has_name() {
+    let database = Database::new("BMSQL".to_string());
+    assert_eq!(database.name(), "BMSQL");
 }

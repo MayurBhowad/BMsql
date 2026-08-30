@@ -17,7 +17,7 @@ A relational database engine built in Rust from first principles. BMsql is devel
 | **Language** | Rust (2024 edition) |
 | **Dependencies** | None |
 
-At v0.1.0, BMsql is a working Rust project with a CLI entry point and test harness. It does not yet provide database files, storage, or SQL.
+At v0.1.0, BMsql is a working Rust project with a CLI entry point, library crate, error type, and test harness. It includes an in-memory `Database` type (name only). It does not yet provide database files, persistent storage, or SQL.
 
 ---
 
@@ -34,7 +34,7 @@ cargo run
 Expected output:
 
 ```text
-BMsql v0.1.0
+BMSQL v0.1.0
 ```
 
 Run tests:
@@ -66,13 +66,14 @@ BMsql (**BM** = Builder / Mayur project identity, **sql** = relational query lan
 
 ```text
 BMsql/
-├── Cargo.toml                  # Package manifest (version 0.1.0)
+├── Cargo.toml                  # Package manifest (version 0.1.0, crate name: bmsql)
 ├── src/
-│   ├── lib.rs                  # Library root (exports error module)
+│   ├── lib.rs                  # Library root (exports database and error modules)
+│   ├── database.rs             # Database type (in-memory, name only)
 │   ├── error.rs                # BmsqlError type
 │   └── main.rs                 # CLI entry point
 ├── tests/
-│   └── smoke_test.rs           # Integration smoke test
+│   └── smoke_test.rs           # Integration test (database name)
 ├── README.md                   # This file
 ├── USER_GUIDE.md               # User-facing guide for the current release
 └── DATABASE_ENGINE_MISSION.md  # Mission and development protocol
