@@ -34,7 +34,7 @@ cargo run
 Expected output:
 
 ```text
-BMSQL v0.1.0
+BMsql
 ```
 
 Run tests:
@@ -69,7 +69,7 @@ BMsql/
 ├── Cargo.toml                  # Package manifest (version 0.1.0, crate name: bmsql)
 ├── src/
 │   ├── lib.rs                  # Library root (exports database and error modules)
-│   ├── database.rs             # Database type (in-memory, name only)
+│   ├── database.rs             # Database type (in-memory, name only; unit tests)
 │   ├── error.rs                # BmsqlError type
 │   └── main.rs                 # CLI entry point
 ├── tests/

@@ -11,3 +11,13 @@ impl Database {
         &self.name
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::database::Database;
+    #[test]
+    fn database_can_be_created() {
+        let database = Database::new(String::from("BMsql"));
+        assert_eq!(database.name(), "BMsql");
+    }
+}

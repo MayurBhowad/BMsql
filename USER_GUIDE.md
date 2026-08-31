@@ -29,8 +29,8 @@ BMsql v0.1.0 is the first release in a phased database engine project. This rele
 
 - A working Rust/Cargo project (crate name: `bmsql`)
 - A library crate with `Database` and `BmsqlError` types
-- A CLI entry point (`cargo run`) that prints the database name and version
-- An integration test harness (`cargo test`)
+- A CLI entry point (`cargo run`) that prints the database name
+- A unit test and an integration test for the `Database` type
 - Stable project layout
 
 There is no database file, no query language, and no persistent data in this version.
@@ -110,10 +110,10 @@ Or run the compiled binary directly:
 **Expected output:**
 
 ```text
-BMSQL v0.1.0
+BMsql
 ```
 
-This confirms the project builds, the `Database` type is wired into the CLI, and the version from `Cargo.toml` is printed correctly.
+This confirms the project builds and the `Database` type is wired into the CLI.
 
 ---
 
@@ -125,9 +125,14 @@ Run the test suite:
 cargo test
 ```
 
-At v0.1.0, one integration test verifies the `Database` name. A successful run looks like:
+At v0.1.0, the test suite includes one unit test and one integration test for the `Database` type. A successful run looks like:
 
 ```text
+running 1 test
+test database::tests::database_can_be_created ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
 running 1 test
 test database_has_name ... ok
 
@@ -164,6 +169,7 @@ Release builds are faster at runtime but take longer to compile. For development
 | Test command runs with `cargo test` | Yes |
 | `Database` type (in-memory, name only) | Yes |
 | `BmsqlError` type (`Io`, `InvalidInput`) | Yes |
+| Unit test for database creation | Yes |
 | Integration test for database name | Yes |
 | Project structure defined | Yes |
 | Version set to 0.1.0 in `Cargo.toml` | Yes |
@@ -195,7 +201,7 @@ Rust/Cargo is not installed or not on your `PATH`. Re-run the [rustup installer]
 
 Ensure you have write access to the project directory. Do not run `cargo` as root unless necessary.
 
-### `BMSQL v0.1.0` does not appear
+### `BMsql` does not appear
 
 Confirm you are in the project root (the directory containing `Cargo.toml`):
 
@@ -204,7 +210,7 @@ ls Cargo.toml
 cargo run
 ```
 
-You should see `BMSQL v0.1.0` printed to stdout.
+You should see `BMsql` printed to stdout.
 
 ---
 
