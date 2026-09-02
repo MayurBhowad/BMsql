@@ -1,10 +1,10 @@
 # BMsql User Guide
 
-**Version:** v0.1.0 — Phase 0: Foundation
+**Version:** v0.4.0 — Phase 2: Pager
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v0.1.0, BMsql is a foundation project with an in-memory `Database` type and a shared `BmsqlError` type. It does not yet provide database commands, persistent storage, or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v0.4.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, and a fixed-size `Page` abstraction. It does not yet provide pager file I/O, row storage, persistent storage, or SQL.
 
 ---
 
@@ -17,7 +17,7 @@ This guide covers how to install, build, run, and verify BMsql at its current re
 5. [Running](#running)
 6. [Testing](#testing)
 7. [Release Builds](#release-builds)
-8. [What Works in v0.1.0](#what-works-in-v010)
+8. [What Works in v0.4.0](#what-works-in-v040)
 9. [Troubleshooting](#troubleshooting)
 10. [Further Reading](#further-reading)
 
@@ -25,15 +25,16 @@ This guide covers how to install, build, run, and verify BMsql at its current re
 
 ## Overview
 
-BMsql v0.1.0 is the first release in a phased database engine project. This release focuses entirely on **Phase 0 — Foundation**:
+BMsql v0.4.0 extends the foundation with the first storage primitive — fixed-size pages:
 
 - A working Rust/Cargo project (crate name: `bmsql`)
-- A library crate with `Database` and `BmsqlError` types
+- A library crate with `Database`, `BmsqlError`, and `Page` types
+- A `Page` type: 4096-byte blocks identified by `PageId` (`u64`), zero-initialized on creation
 - A CLI entry point (`cargo run`) that prints the database name
-- A unit test and an integration test for the `Database` type
+- Unit tests for `Database` and `Page`, plus an integration test for the database name
 - Stable project layout
 
-There is no database file, no query language, and no persistent data in this version.
+There is no database file I/O, no row encoding, no query language, and no persistent data in this version.
 
 ---
 
@@ -65,7 +66,7 @@ git clone <repository-url>
 cd BMsql
 ```
 
-No additional dependencies are required at v0.1.0. The project has zero external crate dependencies.
+No additional dependencies are required at v0.4.0. The project has zero external crate dependencies.
 
 ---
 
@@ -125,20 +126,22 @@ Run the test suite:
 cargo test
 ```
 
-At v0.1.0, the test suite includes one unit test and one integration test for the `Database` type. A successful run looks like:
+At v0.4.0, the test suite includes three unit tests for `Page`, one unit test for `Database`, and one integration test. A successful run looks like:
 
 ```text
-running 1 test
+running 4 tests
 test database::tests::database_can_be_created ... ok
+test page::tests::page_has_correct_id ... ok
+test page::tests::new_page_contains_zeroes ... ok
+test page::tests::page_has_correct_size ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```
-
 
 ---
 
@@ -160,7 +163,7 @@ Release builds are faster at runtime but take longer to compile. For development
 
 ---
 
-## What Works in v0.1.0
+## What Works in v0.4.0
 
 | Capability | Status |
 |---|---|
@@ -169,11 +172,13 @@ Release builds are faster at runtime but take longer to compile. For development
 | Test command runs with `cargo test` | Yes |
 | `Database` type (in-memory, name only) | Yes |
 | `BmsqlError` type (`Io`, `InvalidInput`) | Yes |
+| `Page` type (4096 bytes, `PageId`, zero-init) | Yes |
+| Unit tests for `Page` (size, id, zero bytes) | Yes |
 | Unit test for database creation | Yes |
 | Integration test for database name | Yes |
 | Project structure defined | Yes |
-| Version set to 0.1.0 in `Cargo.toml` | Yes |
-| Persistent storage or SQL | No |
+| Pager file I/O (read/write pages to disk) | No |
+| Row storage or SQL | No |
 
 ---
 

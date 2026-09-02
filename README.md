@@ -1,6 +1,6 @@
 # BMsql
 
-**v0.1.0 — Phase 0: Foundation**
+**v0.4.0 — Phase 2: Pager**
 
 A relational database engine built in Rust from first principles. BMsql is developed in phased milestones — each release adds one layer of capability on top of a tested foundation.
 
@@ -12,12 +12,12 @@ A relational database engine built in Rust from first principles. BMsql is devel
 
 | | |
 |---|---|
-| **Version** | v0.1.0 |
-| **Phase** | 0 — Foundation |
+| **Version** | v0.4.0 |
+| **Phase** | 2 — Pager (page abstraction) |
 | **Language** | Rust (2024 edition) |
 | **Dependencies** | None |
 
-At v0.1.0, BMsql is a working Rust project with a CLI entry point, library crate, error type, and test harness. It includes an in-memory `Database` type (name only). It does not yet provide database files, persistent storage, or SQL.
+At v0.4.0, BMsql provides a library crate with an in-memory `Database` type, a `BmsqlError` type, and a fixed-size `Page` abstraction (4096 bytes). The CLI prints the database name. There is no pager file I/O, row storage, or SQL yet.
 
 ---
 
@@ -66,11 +66,12 @@ BMsql (**BM** = Builder / Mayur project identity, **sql** = relational query lan
 
 ```text
 BMsql/
-├── Cargo.toml                  # Package manifest (version 0.1.0, crate name: bmsql)
+├── Cargo.toml                  # Package manifest (crate name: bmsql)
 ├── src/
-│   ├── lib.rs                  # Library root (exports database and error modules)
-│   ├── database.rs             # Database type (in-memory, name only; unit tests)
+│   ├── lib.rs                  # Library root (exports database, error, page)
+│   ├── database.rs             # Database type (in-memory, name only)
 │   ├── error.rs                # BmsqlError type
+│   ├── page.rs                 # Page type (4096-byte fixed-size blocks)
 │   └── main.rs                 # CLI entry point
 ├── tests/
 │   └── smoke_test.rs           # Integration test (database name)
