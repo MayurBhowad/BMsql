@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 
 use crate::page::Page;
 
@@ -21,6 +21,17 @@ impl DatabaseFile {
         self.file.write_all(page.data())?;
 
         Ok(())
+    }
+
+    pub fn read_page(&mut self, page_id: crate::page::PageId) -> std::io::Result<Page> {
+        let offset = crate::page::page_offset(page_id);
+        self.file.seek(SeekFrom::Start(offset))?;
+
+        let mut data = [0u8; 4096];
+
+        self.file.read_exact(&mut data)?;
+
+        Ok(Page::from_data(page_id, data))
     }
 }
 
