@@ -92,4 +92,76 @@ mod tests {
 
         std::fs::remove_file(path).unwrap();
     }
+
+    #[test]
+    fn database_file_can_read_page() {
+        let path = "bmsql_read_page_test.db";
+
+        File::create(path).unwrap();
+
+        let mut database_file = DatabaseFile::open(path).unwrap();
+
+        let mut page = Page::new(0);
+        page.data_mut()[0] = 42;
+        database_file.write_page(&page).unwrap();
+
+        let page = database_file.read_page(0).unwrap();
+
+        assert_eq!(page.id(), 0);
+        assert_eq!(page.data()[0], 42);
+        assert_eq!(page.size(), 4096);
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn database_file_can_read_second_page() {
+        let path = "bmsql_read_second_page_test.db";
+        File::create(path).unwrap();
+
+        let mut database_file = DatabaseFile::open(path).unwrap();
+
+        let mut page0 = Page::new(0);
+        let mut page1 = Page::new(1);
+
+        page0.data_mut()[0] = 42;
+        page1.data_mut()[0] = 99;
+
+        database_file.write_page(&page0).unwrap();
+        database_file.write_page(&page1).unwrap();
+
+        let page = database_file.read_page(1).unwrap();
+
+        assert_eq!(page.id(), 1);
+        assert_eq!(page.data()[0], 99);
+        assert_eq!(page.size(), 4096);
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn page_data_persists_after_reopening_database() {
+        let path = "bmsql_persistence_test.db";
+        File::create(path).unwrap();
+
+        {
+            let mut database_file = DatabaseFile::open(path).unwrap();
+
+            let mut page = Page::new(1);
+            page.data_mut()[0] = 123;
+
+            database_file.write_page(&page).unwrap();
+        }
+
+        {
+            let mut database_file = DatabaseFile::open(path).unwrap();
+
+            let page = database_file.read_page(1).unwrap();
+
+            assert_eq!(page.id(), 1);
+            assert_eq!(page.data()[0], 123);
+        }
+
+        std::fs::remove_file(path).unwrap();
+    }
 }
