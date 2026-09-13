@@ -4,7 +4,7 @@
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v4.0.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction, page offset calculation, and a `DatabaseFile` storage type that reads and writes pages by ID at their file offset. It does not yet provide row storage or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v4.0.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction (`PAGE_SIZE` = 4096), page offset calculation, and a `DatabaseFile` storage type that reads and writes pages by ID at their file offset. Page data persists across reopen. It does not yet provide row storage or SQL.
 
 ---
 
@@ -29,10 +29,10 @@ BMsql v4.0.0 adds pager primitives on top of the foundation:
 
 - A working Rust/Cargo project (crate name: `bmsql`, version `4.0.0`)
 - A library crate with `Database`, `BmsqlError`, `Page`, and `DatabaseFile` types
-- A `Page` type: 4096-byte blocks identified by `PageId` (`u64`), zero-initialized on creation, with `data` / `data_mut` and `from_data`
-- `page_offset(page_id)` maps a page ID to a byte offset (`page_id * 4096`)
+- A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) identified by `PageId` (`u64`), zero-initialized on creation, with `data` / `data_mut` and `from_data`
+- `page_offset(page_id)` maps a page ID to a byte offset (`page_id * PAGE_SIZE`)
 - `create_database_file` and `open_database_file` helpers for a database file on disk
-- `DatabaseFile::open`, `write_page`, and `read_page` — seek to the page offset and read or write the full page
+- `DatabaseFile::open`, `write_page`, and `read_page` — seek to the page offset and read or write the full page (uses `PAGE_SIZE`)
 - Page data persists after closing and reopening the database file
 - Tests for page layout, file I/O, seek, multi-page writes, page reads, and persistence
 - A CLI entry point (`cargo run`) that prints the database name
@@ -189,7 +189,7 @@ Release builds are faster at runtime but take longer to compile. For development
 | Test command runs with `cargo test` | Yes |
 | `Database` type (in-memory, name only) | Yes |
 | `BmsqlError` type (`Io`, `InvalidInput`) | Yes |
-| `Page` type (4096 bytes, `PageId`, zero-init, `data_mut`, `from_data`) | Yes |
+| `Page` type (`PAGE_SIZE` = 4096, `PageId`, zero-init, `data_mut`, `from_data`) | Yes |
 | Page offset from page ID (`page_offset`) | Yes |
 | Create and open a database file (helpers) | Yes |
 | Write and read bytes from a database file | Yes |

@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 
-use crate::page::Page;
+use crate::page::{Page, PAGE_SIZE};
 
 pub struct DatabaseFile {
     file: File,
@@ -27,7 +27,7 @@ impl DatabaseFile {
         let offset = crate::page::page_offset(page_id);
         self.file.seek(SeekFrom::Start(offset))?;
 
-        let mut data = [0u8; 4096];
+        let mut data = [0u8; PAGE_SIZE];
 
         self.file.read_exact(&mut data)?;
 

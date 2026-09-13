@@ -71,7 +71,7 @@ BMsql/
 │   ├── lib.rs                  # Library root (exports database, error, page, storage)
 │   ├── database.rs             # Database type; create/open database file helpers
 │   ├── error.rs                # BmsqlError type
-│   ├── page.rs                 # Page type (4096-byte blocks, page_offset, from_data)
+│   ├── page.rs                 # Page type (PAGE_SIZE, page_offset, from_data)
 │   ├── storage.rs              # DatabaseFile (open, write_page, read_page)
 │   └── main.rs                 # CLI entry point
 ├── tests/
