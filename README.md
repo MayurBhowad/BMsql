@@ -17,7 +17,7 @@ A relational database engine built in Rust from first principles. BMsql is devel
 | **Language** | Rust (2024 edition) |
 | **Dependencies** | None |
 
-At v4.0.0, BMsql provides a library crate with an in-memory `Database` type, a `BmsqlError` type, a fixed-size `Page` abstraction (4096 bytes), page offset calculation, and database file create/open plus byte and page writes. The CLI prints the database name. There is no row storage or SQL yet.
+At v4.0.0, BMsql provides a library crate with an in-memory `Database` type, a `BmsqlError` type, a fixed-size `Page` abstraction (4096 bytes), page offset calculation, and a `DatabaseFile` storage type that opens a file and writes pages by ID at their file offset. The CLI prints the database name. There is no page-by-ID read API, row storage, or SQL yet.
 
 ---
 
@@ -68,10 +68,11 @@ BMsql (**BM** = Builder / Mayur project identity, **sql** = relational query lan
 BMsql/
 ├── Cargo.toml                  # Package manifest (version 4.0.0, crate name: bmsql)
 ├── src/
-│   ├── lib.rs                  # Library root (exports database, error, page)
-│   ├── database.rs             # Database type; create/open database file
+│   ├── lib.rs                  # Library root (exports database, error, page, storage)
+│   ├── database.rs             # Database type; create/open database file helpers
 │   ├── error.rs                # BmsqlError type
-│   ├── page.rs                 # Page type (4096-byte blocks, page offset)
+│   ├── page.rs                 # Page type (4096-byte blocks, page_offset)
+│   ├── storage.rs              # DatabaseFile (open, write_page by ID)
 │   └── main.rs                 # CLI entry point
 ├── tests/
 │   └── smoke_test.rs           # Integration test (database name)
