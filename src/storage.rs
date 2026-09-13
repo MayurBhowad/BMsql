@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 
 use crate::page::Page;
 
@@ -21,6 +21,17 @@ impl DatabaseFile {
         self.file.write_all(page.data())?;
 
         Ok(())
+    }
+
+    pub fn read_page(&mut self, page_id: crate::page::PageId) -> std::io::Result<Page> {
+        let offset = crate::page::page_offset(page_id);
+        self.file.seek(SeekFrom::Start(offset))?;
+
+        let mut data = [0u8; 4096];
+
+        self.file.read_exact(&mut data)?;
+
+        Ok(Page::from_data(page_id, data))
     }
 }
 
@@ -78,6 +89,78 @@ mod tests {
         file.read_exact(&mut buffer0).unwrap();
 
         assert_eq!(std::fs::metadata(path).unwrap().len(), 8192);
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn database_file_can_read_page() {
+        let path = "bmsql_read_page_test.db";
+
+        File::create(path).unwrap();
+
+        let mut database_file = DatabaseFile::open(path).unwrap();
+
+        let mut page = Page::new(0);
+        page.data_mut()[0] = 42;
+        database_file.write_page(&page).unwrap();
+
+        let page = database_file.read_page(0).unwrap();
+
+        assert_eq!(page.id(), 0);
+        assert_eq!(page.data()[0], 42);
+        assert_eq!(page.size(), 4096);
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn database_file_can_read_second_page() {
+        let path = "bmsql_read_second_page_test.db";
+        File::create(path).unwrap();
+
+        let mut database_file = DatabaseFile::open(path).unwrap();
+
+        let mut page0 = Page::new(0);
+        let mut page1 = Page::new(1);
+
+        page0.data_mut()[0] = 42;
+        page1.data_mut()[0] = 99;
+
+        database_file.write_page(&page0).unwrap();
+        database_file.write_page(&page1).unwrap();
+
+        let page = database_file.read_page(1).unwrap();
+
+        assert_eq!(page.id(), 1);
+        assert_eq!(page.data()[0], 99);
+        assert_eq!(page.size(), 4096);
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn page_data_persists_after_reopening_database() {
+        let path = "bmsql_persistence_test.db";
+        File::create(path).unwrap();
+
+        {
+            let mut database_file = DatabaseFile::open(path).unwrap();
+
+            let mut page = Page::new(1);
+            page.data_mut()[0] = 123;
+
+            database_file.write_page(&page).unwrap();
+        }
+
+        {
+            let mut database_file = DatabaseFile::open(path).unwrap();
+
+            let page = database_file.read_page(1).unwrap();
+
+            assert_eq!(page.id(), 1);
+            assert_eq!(page.data()[0], 123);
+        }
 
         std::fs::remove_file(path).unwrap();
     }

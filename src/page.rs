@@ -30,6 +30,10 @@ impl Page {
     pub fn data_mut(&mut self) -> &mut [u8] {
         &mut self.data
     }
+
+    pub fn from_data(id: PageId, data: [u8; PAGE_SIZE]) -> Self {
+        Self { id, data }
+    }
 }
 
 pub fn page_offset(page_id: PageId) -> u64 {

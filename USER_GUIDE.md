@@ -4,7 +4,7 @@
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v4.0.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction, page offset calculation, and a `DatabaseFile` storage type that writes pages by ID at their file offset. It does not yet provide a page-by-ID read API, row storage, or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v4.0.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction, page offset calculation, and a `DatabaseFile` storage type that reads and writes pages by ID at their file offset. It does not yet provide row storage or SQL.
 
 ---
 
@@ -29,15 +29,16 @@ BMsql v4.0.0 adds pager primitives on top of the foundation:
 
 - A working Rust/Cargo project (crate name: `bmsql`, version `4.0.0`)
 - A library crate with `Database`, `BmsqlError`, `Page`, and `DatabaseFile` types
-- A `Page` type: 4096-byte blocks identified by `PageId` (`u64`), zero-initialized on creation, with `data` / `data_mut` access
+- A `Page` type: 4096-byte blocks identified by `PageId` (`u64`), zero-initialized on creation, with `data` / `data_mut` and `from_data`
 - `page_offset(page_id)` maps a page ID to a byte offset (`page_id * 4096`)
 - `create_database_file` and `open_database_file` helpers for a database file on disk
-- `DatabaseFile::open` and `DatabaseFile::write_page` — seek to the page offset and write the full page
-- Tests for page layout, file I/O, seek, and multi-page writes via `DatabaseFile`
+- `DatabaseFile::open`, `write_page`, and `read_page` — seek to the page offset and read or write the full page
+- Page data persists after closing and reopening the database file
+- Tests for page layout, file I/O, seek, multi-page writes, page reads, and persistence
 - A CLI entry point (`cargo run`) that prints the database name
 - Stable project layout
 
-There is no page-by-ID read API, no row encoding, and no query language yet.
+There is no row encoding and no query language yet.
 
 ---
 
@@ -129,10 +130,10 @@ Run the test suite:
 cargo test
 ```
 
-At v4.0.0, the library tests cover `Database`, `Page`, file create/open/read/write, seek to page offset, and `DatabaseFile` open/write (single and multiple pages). One integration test checks the database name. A successful run looks like:
+At v4.0.0, the library tests cover `Database`, `Page`, file create/open/read/write, seek to page offset, and `DatabaseFile` open/write/read (including a second page and persistence after reopen). One integration test checks the database name. A successful run looks like:
 
 ```text
-running 14 tests
+running 17 tests
 test database::tests::database_can_be_created ... ok
 test page::tests::page_has_correct_size ... ok
 test page::tests::new_page_contains_zeroes ... ok
@@ -147,8 +148,11 @@ test page::tests::file_can_seek_to_page_offset ... ok
 test storage::tests::database_file_can_be_opened ... ok
 test storage::tests::database_file_can_write_page ... ok
 test storage::tests::database_file_can_write_multiple_pages ... ok
+test storage::tests::database_file_can_read_page ... ok
+test storage::tests::database_file_can_read_second_page ... ok
+test storage::tests::page_data_persists_after_reopening_database ... ok
 
-test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
@@ -185,15 +189,16 @@ Release builds are faster at runtime but take longer to compile. For development
 | Test command runs with `cargo test` | Yes |
 | `Database` type (in-memory, name only) | Yes |
 | `BmsqlError` type (`Io`, `InvalidInput`) | Yes |
-| `Page` type (4096 bytes, `PageId`, zero-init, `data_mut`) | Yes |
+| `Page` type (4096 bytes, `PageId`, zero-init, `data_mut`, `from_data`) | Yes |
 | Page offset from page ID (`page_offset`) | Yes |
 | Create and open a database file (helpers) | Yes |
 | Write and read bytes from a database file | Yes |
 | Seek to a page offset and write bytes | Yes |
 | `DatabaseFile::open` (read/write) | Yes |
 | `DatabaseFile::write_page` (by page ID at offset) | Yes |
+| `DatabaseFile::read_page` (by page ID at offset) | Yes |
 | Write multiple pages to a database file | Yes |
-| Page-by-ID read API (`read_page`) | No |
+| Page data persists after reopen | Yes |
 | Row storage or SQL | No |
 | Version set to 4.0.0 in `Cargo.toml` | Yes |
 
