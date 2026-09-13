@@ -25,13 +25,16 @@ impl Page {
 
     pub fn data(&self) -> &[u8] {
         &self.data
-    }
-
-    pub fn page_offset(page_id: PageId) -> u64 {
-        page_id * PAGE_SIZE as u64
     }   
 
+    pub fn data_mut(&mut self) -> &mut [u8] {
+        &mut self.data
+    }
 }
+
+pub fn page_offset(page_id: PageId) -> u64 {
+    page_id * PAGE_SIZE as u64
+}   
 
 
 #[cfg(test)]
@@ -69,10 +72,10 @@ mod tests {
 
     #[test]
     fn page_id_has_correct_offset() {
-        assert_eq!(Page::page_offset(0), 0);
-        assert_eq!(Page::page_offset(1), 4096);
-        assert_eq!(Page::page_offset(2), 8192);
-        assert_eq!(Page::page_offset(42), 172032);
+        assert_eq!(page_offset(0), 0);
+        assert_eq!(page_offset(1), 4096);
+        assert_eq!(page_offset(2), 8192);
+        assert_eq!(page_offset(42), 172032);
     }
 
     #[test]
@@ -130,7 +133,7 @@ mod tests {
     fn file_can_seek_to_page_offset() {
         let path = "bmsql_seek_test.db";
         let mut file = create_database_file(path).unwrap();
-        file.seek(std::io::SeekFrom::Start(Page::page_offset(1))).unwrap();
+        file.seek(std::io::SeekFrom::Start(page_offset(1))).unwrap();
         file.write_all(b"BMsql").unwrap();
         assert_eq!(std::fs::metadata(path).unwrap().len(), 4101);
         std::fs::remove_file(path).unwrap();
