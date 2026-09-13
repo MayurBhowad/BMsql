@@ -34,7 +34,8 @@ BMsql v4.0.0 adds pager primitives on top of the foundation:
 - `create_database_file` and `open_database_file` helpers for a database file on disk
 - `DatabaseFile::open`, `write_page`, and `read_page` — seek to the page offset and read or write the full page (uses `PAGE_SIZE`)
 - Page data persists after closing and reopening the database file
-- Tests for page layout, file I/O, seek, multi-page writes, page reads, and persistence
+- Reading a page that is not present in the file returns an error
+- Tests for page layout, file I/O, seek, multi-page writes, page reads, persistence, and missing-page errors
 - A CLI entry point (`cargo run`) that prints the database name
 - Stable project layout
 
@@ -130,10 +131,10 @@ Run the test suite:
 cargo test
 ```
 
-At v4.0.0, the library tests cover `Database`, `Page`, file create/open/read/write, seek to page offset, and `DatabaseFile` open/write/read (including a second page and persistence after reopen). One integration test checks the database name. A successful run looks like:
+At v4.0.0, the library tests cover `Database`, `Page`, file create/open/read/write, seek to page offset, and `DatabaseFile` open/write/read (including a second page, persistence after reopen, and an error when reading a missing page). One integration test checks the database name. A successful run looks like:
 
 ```text
-running 17 tests
+running 18 tests
 test database::tests::database_can_be_created ... ok
 test page::tests::page_has_correct_size ... ok
 test page::tests::new_page_contains_zeroes ... ok
@@ -151,8 +152,9 @@ test storage::tests::database_file_can_write_multiple_pages ... ok
 test storage::tests::database_file_can_read_page ... ok
 test storage::tests::database_file_can_read_second_page ... ok
 test storage::tests::page_data_persists_after_reopening_database ... ok
+test storage::tests::reading_missing_page_returns_error ... ok
 
-test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
@@ -199,6 +201,7 @@ Release builds are faster at runtime but take longer to compile. For development
 | `DatabaseFile::read_page` (by page ID at offset) | Yes |
 | Write multiple pages to a database file | Yes |
 | Page data persists after reopen | Yes |
+| Reading a missing page returns an error | Yes |
 | Row storage or SQL | No |
 | Version set to 4.0.0 in `Cargo.toml` | Yes |
 

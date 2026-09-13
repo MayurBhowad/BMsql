@@ -164,4 +164,16 @@ mod tests {
 
         std::fs::remove_file(path).unwrap();
     }
+
+    #[test]
+    fn reading_missing_page_returns_error() {
+        let path = "bmsql_reading_missing_page_test.db";
+        File::create(path).unwrap();
+        let mut database_file = DatabaseFile::open(path).unwrap();
+        let result = database_file.read_page(1);
+
+        assert!(result.is_err());
+
+        std::fs::remove_file(path).unwrap();
+    }
 }
