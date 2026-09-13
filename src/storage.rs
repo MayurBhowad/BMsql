@@ -8,12 +8,12 @@ pub struct DatabaseFile {
 }
 
 impl DatabaseFile {
-    pub fn open(path: &str) -> std::io::Result<Self> {
+    pub fn open(path: &str) -> Result<Self, crate::error::BmsqlError> {
         let file = File::options().read(true).write(true).open(path)?;
         Ok(Self { file })
     }
 
-    pub fn write_page(&mut self, page: &Page) -> std::io::Result<()> {
+    pub fn write_page(&mut self, page: &Page) -> Result<(), crate::error::BmsqlError> {
         let offset = crate::page::page_offset(page.id());
 
         self.file.seek(SeekFrom::Start(offset))?;
@@ -23,7 +23,11 @@ impl DatabaseFile {
         Ok(())
     }
 
-    pub fn read_page(&mut self, page_id: crate::page::PageId) -> std::io::Result<Page> {
+
+    /// Reads a complete page from the database file.
+    /// 
+    /// Returns an IO error if the requested page does not contain enough bytes to fill a complete page.
+    pub fn read_page(&mut self, page_id: crate::page::PageId) -> Result<Page, crate::error::BmsqlError> {
         let offset = crate::page::page_offset(page_id);
         self.file.seek(SeekFrom::Start(offset))?;
 
@@ -174,6 +178,19 @@ mod tests {
 
         assert!(result.is_err());
 
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn reading_missing_page_returns_io_error() {
+        let path = "bmsql_missing_page_test.db";
+        File::create(path).unwrap();
+        let mut database_file = DatabaseFile::open(path).unwrap();
+        let result = database_file.read_page(1);
+        match result {
+            Err(crate::error::BmsqlError::Io(_)) => {}
+            _ => panic!("Expected BmsqlError::Io"),
+        }
         std::fs::remove_file(path).unwrap();
     }
 }
