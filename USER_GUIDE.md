@@ -4,7 +4,7 @@
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v4.0.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction (`PAGE_SIZE` = 4096), page offset calculation, and a `DatabaseFile` storage type that reads and writes pages by ID at their file offset. Page data persists across reopen. It does not yet provide row storage or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v4.0.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction (`PAGE_SIZE` = 4096), page offset calculation, and a `DatabaseFile` storage type that reads and writes pages by ID at their file offset (returning `Result<..., BmsqlError>`). Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. It does not yet provide row storage or SQL.
 
 ---
 
@@ -32,9 +32,10 @@ BMsql v4.0.0 adds pager primitives on top of the foundation:
 - A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) identified by `PageId` (`u64`), zero-initialized on creation, with `data` / `data_mut` and `from_data`
 - `page_offset(page_id)` maps a page ID to a byte offset (`page_id * PAGE_SIZE`)
 - `create_database_file` and `open_database_file` helpers for a database file on disk
-- `DatabaseFile::open`, `write_page`, and `read_page` — seek to the page offset and read or write the full page (uses `PAGE_SIZE`)
+- `DatabaseFile::open`, `write_page`, and `read_page` — seek to the page offset and read or write the full page (uses `PAGE_SIZE`; returns `BmsqlError` on failure)
 - Page data persists after closing and reopening the database file
-- Tests for page layout, file I/O, seek, multi-page writes, page reads, and persistence
+- Reading a page that is not present in the file returns `BmsqlError::Io`
+- Tests for page layout, file I/O, seek, multi-page writes, page reads, persistence, and missing-page `BmsqlError::Io`
 - A CLI entry point (`cargo run`) that prints the database name
 - Stable project layout
 
@@ -130,10 +131,10 @@ Run the test suite:
 cargo test
 ```
 
-At v4.0.0, the library tests cover `Database`, `Page`, file create/open/read/write, seek to page offset, and `DatabaseFile` open/write/read (including a second page and persistence after reopen). One integration test checks the database name. A successful run looks like:
+At v4.0.0, the library tests cover `Database`, `Page`, file create/open/read/write, seek to page offset, and `DatabaseFile` open/write/read (including a second page, persistence after reopen, and `BmsqlError::Io` when reading a missing page). One integration test checks the database name. A successful run looks like:
 
 ```text
-running 17 tests
+running 19 tests
 test database::tests::database_can_be_created ... ok
 test page::tests::page_has_correct_size ... ok
 test page::tests::new_page_contains_zeroes ... ok
@@ -151,8 +152,10 @@ test storage::tests::database_file_can_write_multiple_pages ... ok
 test storage::tests::database_file_can_read_page ... ok
 test storage::tests::database_file_can_read_second_page ... ok
 test storage::tests::page_data_persists_after_reopening_database ... ok
+test storage::tests::reading_missing_page_returns_error ... ok
+test storage::tests::reading_missing_page_returns_io_error ... ok
 
-test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
@@ -194,11 +197,10 @@ Release builds are faster at runtime but take longer to compile. For development
 | Create and open a database file (helpers) | Yes |
 | Write and read bytes from a database file | Yes |
 | Seek to a page offset and write bytes | Yes |
-| `DatabaseFile::open` (read/write) | Yes |
-| `DatabaseFile::write_page` (by page ID at offset) | Yes |
-| `DatabaseFile::read_page` (by page ID at offset) | Yes |
+| `DatabaseFile::open` / `write_page` / `read_page` (return `BmsqlError`) | Yes |
 | Write multiple pages to a database file | Yes |
 | Page data persists after reopen | Yes |
+| Reading a missing page returns `BmsqlError::Io` | Yes |
 | Row storage or SQL | No |
 | Version set to 4.0.0 in `Cargo.toml` | Yes |
 
