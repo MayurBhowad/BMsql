@@ -39,7 +39,7 @@ mod tests {
     use super::*;
     use crate::database::create_database_file;
     use crate::database::open_database_file;
-    use std::io::{Read, Write};
+    use std::io::{Read, Write, Seek};
 
     #[test]
     fn page_has_correct_size() {
@@ -123,6 +123,16 @@ mod tests {
         let mut file = create_database_file(path).unwrap();
         file.write_all(page.data()).unwrap();
         assert_eq!(std::fs::metadata(path).unwrap().len(), 4096);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn file_can_seek_to_page_offset() {
+        let path = "bmsql_seek_test.db";
+        let mut file = create_database_file(path).unwrap();
+        file.seek(std::io::SeekFrom::Start(Page::page_offset(1))).unwrap();
+        file.write_all(b"BMsql").unwrap();
+        assert_eq!(std::fs::metadata(path).unwrap().len(), 4101);
         std::fs::remove_file(path).unwrap();
     }
 }

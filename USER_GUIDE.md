@@ -4,7 +4,7 @@
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v4.0.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction, page offset calculation, and database file create/open with byte and page writes. It does not yet provide row storage or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v4.0.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction, page offset calculation, database file create/open with byte and page writes, and seeking to a page offset. It does not yet provide a dedicated page-by-ID read/write API, row storage, or SQL.
 
 ---
 
@@ -32,11 +32,12 @@ BMsql v4.0.0 adds pager primitives on top of the foundation:
 - A `Page` type: 4096-byte blocks identified by `PageId` (`u64`), zero-initialized on creation
 - `Page::page_offset` maps a page ID to a byte offset (`page_id * 4096`)
 - `create_database_file` and `open_database_file` for a database file on disk
-- Tests that write and read bytes, and write a full page (4096 bytes) to a file
+- Seeking to a page offset (`Page::page_offset`) and writing bytes there
+- Tests that write and read bytes, write a full page (4096 bytes), and seek to a page offset
 - A CLI entry point (`cargo run`) that prints the database name
 - Stable project layout
 
-There is no row encoding, no query language, and no read/write of a page by ID at a computed offset yet.
+There is no dedicated page-by-ID read/write API, no row encoding, and no query language yet.
 
 ---
 
@@ -128,10 +129,10 @@ Run the test suite:
 cargo test
 ```
 
-At v4.0.0, the library tests cover `Database`, `Page` (size, id, zero bytes, offset), database file create/open, byte write/read, and writing a page to a file. One integration test checks the database name. A successful run looks like:
+At v4.0.0, the library tests cover `Database`, `Page` (size, id, zero bytes, offset), database file create/open, byte write/read, writing a page to a file, and seeking to a page offset. One integration test checks the database name. A successful run looks like:
 
 ```text
-running 10 tests
+running 11 tests
 test database::tests::database_can_be_created ... ok
 test page::tests::page_has_correct_size ... ok
 test page::tests::new_page_contains_zeroes ... ok
@@ -142,8 +143,9 @@ test page::tests::existing_database_file_can_be_opened ... ok
 test page::tests::database_file_can_store_bytes ... ok
 test page::tests::database_file_can_read_bytes ... ok
 test page::tests::page_can_be_written_to_database_file ... ok
+test page::tests::file_can_seek_to_page_offset ... ok
 
-test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
@@ -185,7 +187,8 @@ Release builds are faster at runtime but take longer to compile. For development
 | Create and open a database file | Yes |
 | Write and read bytes from a database file | Yes |
 | Write a full page (4096 bytes) to a database file | Yes |
-| Read/write a page by ID at its file offset | No |
+| Seek to a page offset and write bytes | Yes |
+| Dedicated page-by-ID read/write API | No |
 | Row storage or SQL | No |
 | Version set to 4.0.0 in `Cargo.toml` | Yes |
 
