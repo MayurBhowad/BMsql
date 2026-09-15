@@ -4,7 +4,7 @@
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v0.3.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction (`PAGE_SIZE` = 4096), a `DatabaseFile` storage layer, and a `Pager` that wraps the file for page read/write, size, page count, and page allocation. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. It does not yet provide row storage or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v0.3.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction (`PAGE_SIZE` = 4096), a `DatabaseFile` storage layer, and a `Pager` with an in-memory page cache plus page read/write, size, page count, and page allocation. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. It does not yet provide row storage or SQL.
 
 ---
 
@@ -29,11 +29,12 @@ BMsql v0.3.0 is the **Pager** milestone:
 
 - A working Rust/Cargo project (crate name: `bmsql`, version `0.3.0`)
 - A library crate with `Database`, `BmsqlError`, `Page`, `DatabaseFile`, and `Pager` types
-- A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) identified by `PageId` (`u64`), zero-initialized on creation, with `data` / `data_mut` and `from_data`
+- A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) identified by `PageId` (`u64`), zero-initialized on creation, with `Clone`, `data` / `data_mut` and `from_data`
 - `page_offset(page_id)` maps a page ID to a byte offset (`page_id * PAGE_SIZE`)
 - `create_database_file` and `open_database_file` helpers for a database file on disk
 - `DatabaseFile::open`, `write_page`, `read_page`, and `size` — low-level page I/O (returns `BmsqlError` on failure)
 - `Pager::open`, `read_page`, `write_page`, `size`, `page_count`, and `allocate_page` — higher-level wrapper over `DatabaseFile`
+- In-memory page cache: `read_page` serves from cache when present; `write_page` updates disk and cache
 - `allocate_page` creates an in-memory zeroed page with the next page ID; it does not write to disk until `write_page`
 - Page data persists after closing and reopening the database file
 - Reading a page that is not present in the file returns `BmsqlError::Io`
@@ -132,10 +133,10 @@ Run the test suite:
 cargo test
 ```
 
-At v0.3.0, the library tests cover `Database`, `Page`, `DatabaseFile`, and `Pager` (including page allocation that does not write until `write_page`). One integration test checks the database name. A successful run looks like:
+At v0.3.0, the library tests cover `Database`, `Page`, `DatabaseFile`, and `Pager` (including page allocation and an in-memory page cache). One integration test checks the database name. A successful run looks like:
 
 ```text
-running 31 tests
+running 33 tests
 test database::tests::database_can_be_created ... ok
 test page::tests::page_has_correct_size ... ok
 test page::tests::new_page_contains_zeroes ... ok
@@ -167,8 +168,10 @@ test pager::tests::pager_can_allocate_page ... ok
 test pager::tests::allocating_page_does_not_write_to_disk ... ok
 test pager::tests::pager_allocates_next_page_id ... ok
 test pager::tests::allocated_page_can_be_written_and_read ... ok
+test pager::tests::pager_returns_cached_page ... ok
+test pager::tests::pager_write_updates_cached_page ... ok
 
-test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
@@ -205,13 +208,14 @@ Release builds are faster at runtime but take longer to compile. For development
 | Test command runs with `cargo test` | Yes |
 | `Database` type (in-memory, name only) | Yes |
 | `BmsqlError` type (`Io`, `InvalidInput`) | Yes |
-| `Page` type (`PAGE_SIZE` = 4096, `PageId`, zero-init, `data_mut`, `from_data`) | Yes |
+| `Page` type (`PAGE_SIZE` = 4096, `PageId`, `Clone`, zero-init, `data_mut`, `from_data`) | Yes |
 | Page offset from page ID (`page_offset`) | Yes |
 | Create and open a database file (helpers) | Yes |
 | `DatabaseFile::open` / `write_page` / `read_page` / `size` | Yes |
 | Write multiple pages; persistence after reopen | Yes |
 | Reading a missing page returns `BmsqlError::Io` | Yes |
 | `Pager::open` / `read_page` / `write_page` / `size` / `page_count` | Yes |
+| In-memory page cache (read hits cache; write updates cache) | Yes |
 | `Pager::allocate_page` (next ID; no disk write until `write_page`) | Yes |
 | `Pager` errors when the database file does not exist | Yes |
 | Row storage or SQL | No |

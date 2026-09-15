@@ -1,23 +1,33 @@
 use crate::error::BmsqlError;
 use crate::page::{Page, PageId};
 use crate::storage::DatabaseFile;
+use std::collections::HashMap;
 
 pub struct Pager {
     database_file: DatabaseFile,
+    page_cache: HashMap<PageId, Page>,
 }
 
 impl Pager {
     pub fn open(path: &str) -> Result<Self, BmsqlError> {
         let database_file = DatabaseFile::open(path)?;
-        Ok(Self { database_file })
+        Ok(Self { database_file, page_cache: HashMap::new() })
     }
 
     pub fn read_page(&mut self, page_id: PageId) -> Result<Page, BmsqlError> {
-        self.database_file.read_page(page_id)
+        if let Some(page) = self.page_cache.get(&page_id) {
+            return Ok(page.clone());
+        }
+        let page =  self.database_file.read_page(page_id)?;
+        self.page_cache.insert(page_id, page.clone());
+
+        Ok(page)
     }
 
     pub fn write_page(&mut self, page: &Page) -> Result<(), BmsqlError> {
-        self.database_file.write_page(page)
+        self.database_file.write_page(page)?;
+        self.page_cache.insert(page.id(), page.clone());
+        Ok(())
     }
 
     pub fn size(&self) -> Result<u64, BmsqlError> {
@@ -175,6 +185,56 @@ mod tests {
         assert_eq!(page.id(), 0);
         assert_eq!(page.data()[0], 55);
         assert_eq!(pager.page_count().unwrap(), 1);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn pager_returns_cached_page() {
+        let path = "bmsql_pager_cached_page_test.db";
+        File::create(path).unwrap();
+
+        let mut pager = Pager::open(path).unwrap();
+
+        let mut page = Page::new(0);
+        page.data_mut()[0] = 42;
+        pager.write_page(&page).unwrap();
+
+        let page = pager.read_page(0).unwrap();
+        assert_eq!(page.data()[0], 42);
+
+        let mut database_file = DatabaseFile::open(path).unwrap();
+
+        let mut updated_page = Page::new(0);
+        updated_page.data_mut()[0] = 99;
+        database_file.write_page(&updated_page).unwrap();
+
+        let page = pager.read_page(0).unwrap();
+
+        assert_eq!(page.data()[0], 42);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn pager_write_updates_cached_page() {
+        let path = "bmsql_pager_cache_write_test.db";
+        File::create(path).unwrap();
+
+        let mut pager = Pager::open(path).unwrap();
+
+        let mut page = Page::new(0);
+        page.data_mut()[0] = 42;
+        pager.write_page(&page).unwrap();
+
+        let _ = pager.read_page(0).unwrap();
+
+        let mut updated_page = Page::new(0);
+        updated_page.data_mut()[0] = 99;
+        pager.write_page(&updated_page).unwrap();
+
+        let page = pager.read_page(0).unwrap();
+
+        assert_eq!(page.data()[0], 99);
+
         std::fs::remove_file(path).unwrap();
     }
 }

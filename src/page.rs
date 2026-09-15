@@ -2,6 +2,7 @@ pub const  PAGE_SIZE: usize = 4096;
 
 pub type PageId = u64;
 
+#[derive(Clone)]
 pub struct Page {
     id: PageId,
     data: [u8; PAGE_SIZE],
