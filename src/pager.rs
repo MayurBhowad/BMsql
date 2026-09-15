@@ -27,6 +27,11 @@ impl Pager {
     pub fn page_count(&self) -> Result<u64, BmsqlError> {
         Ok(self.size()? / crate::page::PAGE_SIZE as u64)
     }
+
+    pub fn allocate_page(&self) -> Result<Page, BmsqlError> {
+        let page_count = self.page_count()?;
+        Ok(Page::new(page_count))
+    }
 }
 
 #[cfg(test)]
@@ -109,6 +114,67 @@ mod tests {
 
         assert_eq!(pager.page_count().unwrap(), 2);
 
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn pager_can_allocate_page() {
+        let path = "bmsql_pager_allocate_test.db";
+        File::create(path).unwrap();
+        let pager = Pager::open(path).unwrap();
+
+        let page = pager.allocate_page().unwrap();
+
+        assert_eq!(page.id(), 0);
+        assert_eq!(page.size(), crate::page::PAGE_SIZE);
+        assert_eq!(page.data()[0], 0);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn allocating_page_does_not_write_to_disk() {
+        let path = "bmsql_pager_allocate_no_write_test.db";
+        File::create(path).unwrap();
+        let pager = Pager::open(path).unwrap();
+        let _page = pager.allocate_page().unwrap();
+
+        assert_eq!(pager.size().unwrap(), 0);
+        assert_eq!(pager.page_count().unwrap(), 0);
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn pager_allocates_next_page_id() {
+        let path = "bmsql_pager_next_page_test.db";
+        File::create(path).unwrap();
+        let mut pager = Pager::open(path).unwrap();
+        let page0 = Page::new(0);
+        pager.write_page(&page0).unwrap();
+
+        let page1 = pager.allocate_page().unwrap();
+
+        assert_eq!(page1.id(), 1);
+        assert_eq!(pager.page_count().unwrap(), 1);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn allocated_page_can_be_written_and_read() {
+        let path = "bmsql_pager_allocated_page_test.db";
+        File::create(path).unwrap();
+        let mut pager = Pager::open(path).unwrap();
+
+        let mut page = pager.allocate_page().unwrap();
+        page.data_mut()[0] = 55;
+
+        pager.write_page(&page).unwrap();
+
+        let page = pager.read_page(0).unwrap();
+
+        assert_eq!(page.id(), 0);
+        assert_eq!(page.data()[0], 55);
+        assert_eq!(pager.page_count().unwrap(), 1);
         std::fs::remove_file(path).unwrap();
     }
 }
