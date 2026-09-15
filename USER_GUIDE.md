@@ -4,7 +4,7 @@
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v4.0.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction (`PAGE_SIZE` = 4096), a `DatabaseFile` storage layer, and a `Pager` that wraps the file for page read/write and size reporting. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. It does not yet provide row storage or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v4.0.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction (`PAGE_SIZE` = 4096), a `DatabaseFile` storage layer, and a `Pager` that wraps the file for page read/write, size, and page count. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. It does not yet provide row storage or SQL.
 
 ---
 
@@ -33,7 +33,7 @@ BMsql v4.0.0 adds pager primitives on top of the foundation:
 - `page_offset(page_id)` maps a page ID to a byte offset (`page_id * PAGE_SIZE`)
 - `create_database_file` and `open_database_file` helpers for a database file on disk
 - `DatabaseFile::open`, `write_page`, `read_page`, and `size` — low-level page I/O (returns `BmsqlError` on failure)
-- `Pager::open`, `read_page`, `write_page`, and `size` — higher-level wrapper over `DatabaseFile`
+- `Pager::open`, `read_page`, `write_page`, `size`, and `page_count` — higher-level wrapper over `DatabaseFile`
 - Page data persists after closing and reopening the database file
 - Reading a page that is not present in the file returns `BmsqlError::Io`
 - A CLI entry point (`cargo run`) that prints the database name
@@ -131,10 +131,10 @@ Run the test suite:
 cargo test
 ```
 
-At v4.0.0, the library tests cover `Database`, `Page`, `DatabaseFile` (including size and missing-page errors), and `Pager` (open, read, write, size, missing-file error). One integration test checks the database name. A successful run looks like:
+At v4.0.0, the library tests cover `Database`, `Page`, `DatabaseFile` (including size and missing-page errors), and `Pager` (open, read, write, size, page count, missing-file error). One integration test checks the database name. A successful run looks like:
 
 ```text
-running 26 tests
+running 27 tests
 test database::tests::database_can_be_created ... ok
 test page::tests::page_has_correct_size ... ok
 test page::tests::new_page_contains_zeroes ... ok
@@ -161,8 +161,9 @@ test pager::tests::pager_can_read_page ... ok
 test pager::tests::pager_can_write_page ... ok
 test pager::tests::pager_returns_error_when_database_file_does_not_exist ... ok
 test pager::tests::pager_reports_database_file_size ... ok
+test pager::tests::pager_reports_page_count ... ok
 
-test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
@@ -205,7 +206,7 @@ Release builds are faster at runtime but take longer to compile. For development
 | `DatabaseFile::open` / `write_page` / `read_page` / `size` | Yes |
 | Write multiple pages; persistence after reopen | Yes |
 | Reading a missing page returns `BmsqlError::Io` | Yes |
-| `Pager::open` / `read_page` / `write_page` / `size` | Yes |
+| `Pager::open` / `read_page` / `write_page` / `size` / `page_count` | Yes |
 | `Pager` errors when the database file does not exist | Yes |
 | Row storage or SQL | No |
 | Version set to 4.0.0 in `Cargo.toml` | Yes |
