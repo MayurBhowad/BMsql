@@ -1,10 +1,10 @@
 # BMsql User Guide
 
-**Version:** v4.0.0 — Phase 2: Pager
+**Version:** v0.3.0 — Phase 2: Pager
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v4.0.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction (`PAGE_SIZE` = 4096), a `DatabaseFile` storage layer, and a `Pager` that wraps the file for page read/write, size, and page count. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. It does not yet provide row storage or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v0.3.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction (`PAGE_SIZE` = 4096), a `DatabaseFile` storage layer, and a `Pager` that wraps the file for page read/write, size, page count, and page allocation. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. It does not yet provide row storage or SQL.
 
 ---
 
@@ -17,7 +17,7 @@ This guide covers how to install, build, run, and verify BMsql at its current re
 5. [Running](#running)
 6. [Testing](#testing)
 7. [Release Builds](#release-builds)
-8. [What Works in v4.0.0](#what-works-in-v400)
+8. [What Works in v0.3.0](#what-works-in-v030)
 9. [Troubleshooting](#troubleshooting)
 10. [Further Reading](#further-reading)
 
@@ -25,15 +25,16 @@ This guide covers how to install, build, run, and verify BMsql at its current re
 
 ## Overview
 
-BMsql v4.0.0 adds pager primitives on top of the foundation:
+BMsql v0.3.0 is the **Pager** milestone:
 
-- A working Rust/Cargo project (crate name: `bmsql`, version `4.0.0`)
+- A working Rust/Cargo project (crate name: `bmsql`, version `0.3.0`)
 - A library crate with `Database`, `BmsqlError`, `Page`, `DatabaseFile`, and `Pager` types
 - A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) identified by `PageId` (`u64`), zero-initialized on creation, with `data` / `data_mut` and `from_data`
 - `page_offset(page_id)` maps a page ID to a byte offset (`page_id * PAGE_SIZE`)
 - `create_database_file` and `open_database_file` helpers for a database file on disk
 - `DatabaseFile::open`, `write_page`, `read_page`, and `size` — low-level page I/O (returns `BmsqlError` on failure)
-- `Pager::open`, `read_page`, `write_page`, `size`, and `page_count` — higher-level wrapper over `DatabaseFile`
+- `Pager::open`, `read_page`, `write_page`, `size`, `page_count`, and `allocate_page` — higher-level wrapper over `DatabaseFile`
+- `allocate_page` creates an in-memory zeroed page with the next page ID; it does not write to disk until `write_page`
 - Page data persists after closing and reopening the database file
 - Reading a page that is not present in the file returns `BmsqlError::Io`
 - A CLI entry point (`cargo run`) that prints the database name
@@ -71,7 +72,7 @@ git clone <repository-url>
 cd BMsql
 ```
 
-No additional dependencies are required at v4.0.0. The project has zero external crate dependencies.
+No additional dependencies are required at v0.3.0. The project has zero external crate dependencies.
 
 ---
 
@@ -131,10 +132,10 @@ Run the test suite:
 cargo test
 ```
 
-At v4.0.0, the library tests cover `Database`, `Page`, `DatabaseFile` (including size and missing-page errors), and `Pager` (open, read, write, size, page count, missing-file error). One integration test checks the database name. A successful run looks like:
+At v0.3.0, the library tests cover `Database`, `Page`, `DatabaseFile`, and `Pager` (including page allocation that does not write until `write_page`). One integration test checks the database name. A successful run looks like:
 
 ```text
-running 27 tests
+running 31 tests
 test database::tests::database_can_be_created ... ok
 test page::tests::page_has_correct_size ... ok
 test page::tests::new_page_contains_zeroes ... ok
@@ -162,8 +163,12 @@ test pager::tests::pager_can_write_page ... ok
 test pager::tests::pager_returns_error_when_database_file_does_not_exist ... ok
 test pager::tests::pager_reports_database_file_size ... ok
 test pager::tests::pager_reports_page_count ... ok
+test pager::tests::pager_can_allocate_page ... ok
+test pager::tests::allocating_page_does_not_write_to_disk ... ok
+test pager::tests::pager_allocates_next_page_id ... ok
+test pager::tests::allocated_page_can_be_written_and_read ... ok
 
-test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
@@ -191,7 +196,7 @@ Release builds are faster at runtime but take longer to compile. For development
 
 ---
 
-## What Works in v4.0.0
+## What Works in v0.3.0
 
 | Capability | Status |
 |---|---|
@@ -207,9 +212,10 @@ Release builds are faster at runtime but take longer to compile. For development
 | Write multiple pages; persistence after reopen | Yes |
 | Reading a missing page returns `BmsqlError::Io` | Yes |
 | `Pager::open` / `read_page` / `write_page` / `size` / `page_count` | Yes |
+| `Pager::allocate_page` (next ID; no disk write until `write_page`) | Yes |
 | `Pager` errors when the database file does not exist | Yes |
 | Row storage or SQL | No |
-| Version set to 4.0.0 in `Cargo.toml` | Yes |
+| Version set to 0.3.0 in `Cargo.toml` | Yes |
 
 ---
 
