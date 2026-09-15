@@ -37,6 +37,10 @@ impl DatabaseFile {
 
         Ok(Page::from_data(page_id, data))
     }
+
+    pub fn size(&self) -> Result<u64, crate::error::BmsqlError> {
+        Ok(self.file.metadata()?.len())
+    }
 }
 
 
@@ -191,6 +195,26 @@ mod tests {
             Err(crate::error::BmsqlError::Io(_)) => {}
             _ => panic!("Expected BmsqlError::Io"),
         }
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn database_file_reports_size() {
+        let path = "bmsql_file_size_test.db";
+        File::create(path).unwrap();
+        let mut database_file = DatabaseFile::open(path).unwrap();
+        let page = Page::new(0);
+        database_file.write_page(&page).unwrap();
+        assert_eq!(database_file.size().unwrap(), 4096);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn empty_database_file_has_size_zero() {
+        let path = "bmsql_empty_file_size_test.db";
+        File::create(path).unwrap();
+        let database_file = DatabaseFile::open(path).unwrap();
+        assert_eq!(database_file.size().unwrap(), 0);
         std::fs::remove_file(path).unwrap();
     }
 }

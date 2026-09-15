@@ -4,7 +4,7 @@
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v4.0.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction (`PAGE_SIZE` = 4096), page offset calculation, and a `DatabaseFile` storage type that reads and writes pages by ID at their file offset (returning `Result<..., BmsqlError>`). Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. It does not yet provide row storage or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v4.0.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction (`PAGE_SIZE` = 4096), a `DatabaseFile` storage layer, and a `Pager` that wraps the file for page read/write and size reporting. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. It does not yet provide row storage or SQL.
 
 ---
 
@@ -28,14 +28,14 @@ This guide covers how to install, build, run, and verify BMsql at its current re
 BMsql v4.0.0 adds pager primitives on top of the foundation:
 
 - A working Rust/Cargo project (crate name: `bmsql`, version `4.0.0`)
-- A library crate with `Database`, `BmsqlError`, `Page`, and `DatabaseFile` types
+- A library crate with `Database`, `BmsqlError`, `Page`, `DatabaseFile`, and `Pager` types
 - A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) identified by `PageId` (`u64`), zero-initialized on creation, with `data` / `data_mut` and `from_data`
 - `page_offset(page_id)` maps a page ID to a byte offset (`page_id * PAGE_SIZE`)
 - `create_database_file` and `open_database_file` helpers for a database file on disk
-- `DatabaseFile::open`, `write_page`, and `read_page` — seek to the page offset and read or write the full page (uses `PAGE_SIZE`; returns `BmsqlError` on failure)
+- `DatabaseFile::open`, `write_page`, `read_page`, and `size` — low-level page I/O (returns `BmsqlError` on failure)
+- `Pager::open`, `read_page`, `write_page`, and `size` — higher-level wrapper over `DatabaseFile`
 - Page data persists after closing and reopening the database file
 - Reading a page that is not present in the file returns `BmsqlError::Io`
-- Tests for page layout, file I/O, seek, multi-page writes, page reads, persistence, and missing-page `BmsqlError::Io`
 - A CLI entry point (`cargo run`) that prints the database name
 - Stable project layout
 
@@ -131,10 +131,10 @@ Run the test suite:
 cargo test
 ```
 
-At v4.0.0, the library tests cover `Database`, `Page`, file create/open/read/write, seek to page offset, and `DatabaseFile` open/write/read (including a second page, persistence after reopen, and `BmsqlError::Io` when reading a missing page). One integration test checks the database name. A successful run looks like:
+At v4.0.0, the library tests cover `Database`, `Page`, `DatabaseFile` (including size and missing-page errors), and `Pager` (open, read, write, size, missing-file error). One integration test checks the database name. A successful run looks like:
 
 ```text
-running 19 tests
+running 26 tests
 test database::tests::database_can_be_created ... ok
 test page::tests::page_has_correct_size ... ok
 test page::tests::new_page_contains_zeroes ... ok
@@ -154,8 +154,15 @@ test storage::tests::database_file_can_read_second_page ... ok
 test storage::tests::page_data_persists_after_reopening_database ... ok
 test storage::tests::reading_missing_page_returns_error ... ok
 test storage::tests::reading_missing_page_returns_io_error ... ok
+test storage::tests::database_file_reports_size ... ok
+test storage::tests::empty_database_file_has_size_zero ... ok
+test pager::tests::pager_can_be_opened ... ok
+test pager::tests::pager_can_read_page ... ok
+test pager::tests::pager_can_write_page ... ok
+test pager::tests::pager_returns_error_when_database_file_does_not_exist ... ok
+test pager::tests::pager_reports_database_file_size ... ok
 
-test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
@@ -195,12 +202,11 @@ Release builds are faster at runtime but take longer to compile. For development
 | `Page` type (`PAGE_SIZE` = 4096, `PageId`, zero-init, `data_mut`, `from_data`) | Yes |
 | Page offset from page ID (`page_offset`) | Yes |
 | Create and open a database file (helpers) | Yes |
-| Write and read bytes from a database file | Yes |
-| Seek to a page offset and write bytes | Yes |
-| `DatabaseFile::open` / `write_page` / `read_page` (return `BmsqlError`) | Yes |
-| Write multiple pages to a database file | Yes |
-| Page data persists after reopen | Yes |
+| `DatabaseFile::open` / `write_page` / `read_page` / `size` | Yes |
+| Write multiple pages; persistence after reopen | Yes |
 | Reading a missing page returns `BmsqlError::Io` | Yes |
+| `Pager::open` / `read_page` / `write_page` / `size` | Yes |
+| `Pager` errors when the database file does not exist | Yes |
 | Row storage or SQL | No |
 | Version set to 4.0.0 in `Cargo.toml` | Yes |
 
