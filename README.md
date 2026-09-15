@@ -17,7 +17,7 @@ A relational database engine built in Rust from first principles. BMsql is devel
 | **Language** | Rust (2024 edition) |
 | **Dependencies** | None |
 
-At v4.0.0, BMsql provides a library crate with an in-memory `Database` type, a `BmsqlError` type, a fixed-size `Page` abstraction (4096 bytes), page offset calculation, and a `DatabaseFile` storage type that opens a file and reads/writes pages by ID at their file offset (returning `BmsqlError`). Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. The CLI prints the database name. There is no row storage or SQL yet.
+At v4.0.0, BMsql provides a library crate with an in-memory `Database` type, a `BmsqlError` type, a fixed-size `Page` abstraction (4096 bytes), a `DatabaseFile` storage layer, and a `Pager` that wraps the file for page read/write and file size. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. The CLI prints the database name. There is no row storage or SQL yet.
 
 ---
 
@@ -68,11 +68,12 @@ BMsql (**BM** = Builder / Mayur project identity, **sql** = relational query lan
 BMsql/
 ├── Cargo.toml                  # Package manifest (version 4.0.0, crate name: bmsql)
 ├── src/
-│   ├── lib.rs                  # Library root (exports database, error, page, storage)
+│   ├── lib.rs                  # Library root (exports database, error, page, pager, storage)
 │   ├── database.rs             # Database type; create/open database file helpers
 │   ├── error.rs                # BmsqlError type
 │   ├── page.rs                 # Page type (PAGE_SIZE, page_offset, from_data)
-│   ├── storage.rs              # DatabaseFile (open, write_page, read_page → BmsqlError)
+│   ├── storage.rs              # DatabaseFile (open, write_page, read_page, size)
+│   ├── pager.rs                # Pager (open, read_page, write_page, size)
 │   └── main.rs                 # CLI entry point
 ├── tests/
 │   └── smoke_test.rs           # Integration test (database name)

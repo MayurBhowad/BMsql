@@ -19,6 +19,10 @@ impl Pager {
     pub fn write_page(&mut self, page: &Page) -> Result<(), BmsqlError> {
         self.database_file.write_page(page)
     }
+
+    pub fn size(&self) -> Result<u64, BmsqlError> {
+        self.database_file.size()
+    }
 }
 
 #[cfg(test)]
@@ -70,5 +74,16 @@ mod tests {
         let path = "bmsql_pager_missing_test.db";
         let result = Pager::open(path);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn pager_reports_database_file_size() {
+        let path = "bmsql_pager_size_test.db";
+        File::create(path).unwrap();
+        let mut pager = Pager::open(path).unwrap();
+        let page = Page::new(0);
+        pager.write_page(&page).unwrap();
+        assert_eq!(pager.size().unwrap(), 4096);
+        std::fs::remove_file(path).unwrap();
     }
 }
