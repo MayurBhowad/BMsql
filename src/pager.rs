@@ -23,6 +23,10 @@ impl Pager {
     pub fn size(&self) -> Result<u64, BmsqlError> {
         self.database_file.size()
     }
+
+    pub fn page_count(&self) -> Result<u64, BmsqlError> {
+        Ok(self.size()? / crate::page::PAGE_SIZE as u64)
+    }
 }
 
 #[cfg(test)]
@@ -84,6 +88,27 @@ mod tests {
         let page = Page::new(0);
         pager.write_page(&page).unwrap();
         assert_eq!(pager.size().unwrap(), 4096);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn pager_reports_page_count() {
+        let path = "bmsql_pager_page_count_test.db";
+        File::create(path).unwrap();
+        let mut pager = Pager::open(path).unwrap();
+
+        assert_eq!(pager.page_count().unwrap(), 0);
+
+        let page0 = Page::new(0);
+        pager.write_page(&page0).unwrap();
+
+        assert_eq!(pager.page_count().unwrap(), 1);
+
+        let page1 = Page::new(1);
+        pager.write_page(&page1).unwrap();
+
+        assert_eq!(pager.page_count().unwrap(), 2);
+
         std::fs::remove_file(path).unwrap();
     }
 }
