@@ -1,10 +1,10 @@
 # BMsql User Guide
 
-**Version:** v0.3.0 — Phase 2: Pager
+**Version:** v0.4.0 — Phase 3: Row Storage
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v0.3.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` with a 5-byte `PageHeader`, a `DatabaseFile` storage layer, and a `Pager` with a bounded FIFO page cache plus page read/write, size, page count, and page allocation. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. It does not yet provide row storage or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v0.4.0, BMsql adds structured page layout and basic record insertion on top of the pager: a 7-byte `PageHeader`, a `Slot` type (`SLOT_SIZE` = 4), and `Page::insert_record`. It does not yet provide a record scan/read-by-slot API, tables/schemas, or SQL.
 
 ---
 
@@ -17,7 +17,7 @@ This guide covers how to install, build, run, and verify BMsql at its current re
 5. [Running](#running)
 6. [Testing](#testing)
 7. [Release Builds](#release-builds)
-8. [What Works in v0.3.0](#what-works-in-v030)
+8. [What Works in v0.4.0](#what-works-in-v040)
 9. [Troubleshooting](#troubleshooting)
 10. [Further Reading](#further-reading)
 
@@ -25,27 +25,20 @@ This guide covers how to install, build, run, and verify BMsql at its current re
 
 ## Overview
 
-BMsql v0.3.0 is the **Pager** milestone:
+BMsql v0.4.0 is the **Row Storage** milestone:
 
-- A working Rust/Cargo project (crate name: `bmsql`, version `0.3.0`)
-- A library crate with `Database`, `BmsqlError`, `Page`, `PageHeader`, `DatabaseFile`, and `Pager` types
-- A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) with a 5-byte header (`PAGE_HEADER_SIZE`) and `PAGE_DATA_SIZE` payload bytes
-- `PageHeader`: `page_type` (u8), `record_count` (u16 LE), `free_space_offset` (u16 LE); serialize via `to_bytes` / `from_bytes`
-- `Page::to_bytes` / `from_data` round-trip the full 4096-byte on-disk layout (header + data)
+- A working Rust/Cargo project (crate name: `bmsql`, version `0.4.0`)
+- A library crate with `Database`, `BmsqlError`, `Page`, `PageHeader`, `Slot`, `DatabaseFile`, and `Pager` types
+- A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) with a 7-byte header (`PAGE_HEADER_SIZE`) and `PAGE_DATA_SIZE` payload bytes
+- `PageHeader`: `page_type` (u8), `record_count` (u16 LE), `free_space_offset` (u16 LE), `slot_directory_offset` (u16 LE)
+- `Slot`: `offset` and `length` (each u16); `SLOT_SIZE` = 4
+- `Page::insert_record` appends record bytes into free space, increments `record_count`, and advances `free_space_offset`; returns `BmsqlError::InvalidInput` if the record does not fit
+- `Page::to_bytes` / `from_data` round-trip the on-disk layout (header + data)
 - `page_offset(page_id)` maps a page ID to a byte offset (`page_id * PAGE_SIZE`)
-- `create_database_file` and `open_database_file` helpers for a database file on disk
-- `DatabaseFile::open`, `write_page`, `read_page`, and `size` — low-level page I/O (returns `BmsqlError` on failure)
-- `Pager::open(path, cache_capacity)`, `read_page`, `write_page`, `size`, `page_count`, `allocate_page`, and `cache_size`
-- Bounded FIFO page cache: capacity must be greater than zero (`InvalidInput` if zero); when full, the oldest page is evicted
-- `read_page` serves from cache when present; otherwise loads from disk and inserts into the cache
-- `write_page` writes to disk and updates the cache (updates an existing entry in place; new entries may trigger eviction)
-- `allocate_page` creates an in-memory zeroed page with the next page ID; it does not write to disk until `write_page`
-- Page data persists after closing and reopening the database file
-- Reading a page that is not present in the file returns `BmsqlError::Io`
+- `DatabaseFile` and `Pager` from v0.3.0 (page I/O, FIFO cache, size, page count, allocate)
 - A CLI entry point (`cargo run`) that prints the database name
-- Stable project layout
 
-There is no row encoding and no query language yet.
+There is no record read-by-slot or scan API, no tables/schemas, and no query language yet.
 
 ---
 
@@ -77,7 +70,7 @@ git clone <repository-url>
 cd BMsql
 ```
 
-No additional dependencies are required at v0.3.0. The project has zero external crate dependencies.
+No additional dependencies are required at v0.4.0. The project has zero external crate dependencies.
 
 ---
 
@@ -137,10 +130,10 @@ Run the test suite:
 cargo test
 ```
 
-At v0.3.0, the library tests cover `Database`, `Page` / `PageHeader` (including serialization), `DatabaseFile`, and `Pager` (including page allocation and a bounded FIFO page cache). One integration test checks the database name. A successful run looks like:
+At v0.4.0, the library tests cover pager/storage behavior plus page header layout, slots, and record insertion. One integration test checks the database name. A successful run looks like:
 
 ```text
-running 45 tests
+running 50 tests
 test database::tests::database_can_be_created ... ok
 test page::tests::page_has_correct_size ... ok
 test page::tests::new_page_contains_zeroes ... ok
@@ -160,40 +153,23 @@ test page::tests::page_header_can_be_serialized ... ok
 test page::tests::page_can_be_serialized_to_4096_bytes ... ok
 test page::tests::page_header_can_be_deserialized ... ok
 test page::tests::page_from_data_preserves_header ... ok
-test storage::tests::database_file_can_be_opened ... ok
-test storage::tests::database_file_can_write_page ... ok
-test storage::tests::database_file_can_write_multiple_pages ... ok
-test storage::tests::database_file_can_read_page ... ok
-test storage::tests::database_file_can_read_second_page ... ok
-test storage::tests::page_data_persists_after_reopening_database ... ok
-test storage::tests::reading_missing_page_returns_error ... ok
-test storage::tests::reading_missing_page_returns_io_error ... ok
-test storage::tests::database_file_reports_size ... ok
-test storage::tests::empty_database_file_has_size_zero ... ok
-test pager::tests::pager_can_be_opened ... ok
-test pager::tests::pager_can_read_page ... ok
-test pager::tests::pager_can_write_page ... ok
-test pager::tests::pager_returns_error_when_database_file_does_not_exist ... ok
-test pager::tests::pager_reports_database_file_size ... ok
-test pager::tests::pager_reports_page_count ... ok
-test pager::tests::pager_can_allocate_page ... ok
-test pager::tests::allocating_page_does_not_write_to_disk ... ok
-test pager::tests::pager_allocates_next_page_id ... ok
-test pager::tests::allocated_page_can_be_written_and_read ... ok
-test pager::tests::pager_returns_cached_page ... ok
-test pager::tests::pager_write_updates_cached_page ... ok
-test pager::tests::pager_cache_respects_capacity ... ok
-test pager::tests::writing_cached_page_does_not_increase_cache_size ... ok
-test pager::tests::pager_evicts_oldest_cached_page ... ok
-test pager::tests::pager_rejects_zero_size_capacity ... ok
+test page::tests::page_can_insert_record ... ok
+test page::tests::page_can_insert_multiple_records ... ok
+test page::tests::page_rejects_record_when_not_enough_space ... ok
+test page::tests::page_inserts_records_after_existing_data ... ok
+test page::tests::slot_has_correct_values ... ok
+test storage::tests::... ... ok
+test pager::tests::... ... ok
 
-test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```
+
+(Storage and pager tests from v0.3.0 remain; names abbreviated above as `...`.)
 
 ---
 
@@ -215,30 +191,21 @@ Release builds are faster at runtime but take longer to compile. For development
 
 ---
 
-## What Works in v0.3.0
+## What Works in v0.4.0
 
 | Capability | Status |
 |---|---|
 | Project compiles with `cargo build` | Yes |
 | CLI starts with `cargo run` | Yes |
 | Test command runs with `cargo test` | Yes |
-| `Database` type (in-memory, name only) | Yes |
-| `BmsqlError` type (`Io`, `InvalidInput`) | Yes |
-| `Page` type (`PAGE_SIZE` = 4096, `PageId`, `Clone`, `to_bytes` / `from_data`) | Yes |
-| `PageHeader` (5 bytes: page_type, record_count, free_space_offset) | Yes |
-| `PageHeader` / `Page` serialize and deserialize | Yes |
-| Page offset from page ID (`page_offset`) | Yes |
-| Create and open a database file (helpers) | Yes |
-| `DatabaseFile::open` / `write_page` / `read_page` / `size` | Yes |
-| Write multiple pages; persistence after reopen | Yes |
-| Reading a missing page returns `BmsqlError::Io` | Yes |
-| `Pager::open(path, cache_capacity)` / `read_page` / `write_page` / `size` / `page_count` / `cache_size` | Yes |
-| Bounded FIFO page cache (evict oldest when full) | Yes |
-| Rejects zero cache capacity (`BmsqlError::InvalidInput`) | Yes |
-| `Pager::allocate_page` (next ID; no disk write until `write_page`) | Yes |
-| `Pager` errors when the database file does not exist | Yes |
-| Row storage or SQL | No |
-| Version set to 0.3.0 in `Cargo.toml` | Yes |
+| Pager / `DatabaseFile` (I/O, FIFO cache, size, allocate) | Yes |
+| `Page` (`PAGE_SIZE` = 4096, `to_bytes` / `from_data`) | Yes |
+| `PageHeader` (7 bytes, including `slot_directory_offset`) | Yes |
+| `Slot` (offset + length, `SLOT_SIZE` = 4) | Yes |
+| `Page::insert_record` (append; reject if no space) | Yes |
+| Record read-by-slot / scan API | No |
+| Tables, schemas, or SQL | No |
+| Version set to 0.4.0 in `Cargo.toml` | Yes |
 
 ---
 

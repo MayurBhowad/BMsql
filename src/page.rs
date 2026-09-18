@@ -1,14 +1,22 @@
+use crate::error::BmsqlError;
 pub const  PAGE_SIZE: usize = 4096;
-pub const PAGE_HEADER_SIZE: usize = 5;
+pub const PAGE_HEADER_SIZE: usize = 7;
 pub const PAGE_DATA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE;
-
+pub const SLOT_SIZE: usize = 4;
 pub type PageId = u64;
+
+#[derive(Clone, Copy)]
+pub struct Slot {
+    offset: u16,
+    length: u16,
+}
 
 #[derive(Clone)]
 pub struct PageHeader {
     page_type: u8,
     record_count: u16,
     free_space_offset: u16,
+    slot_directory_offset: u16,
 }
 
 #[derive(Clone)]
@@ -18,9 +26,23 @@ pub struct Page {
     data: [u8; PAGE_DATA_SIZE],
 }
 
+impl Slot {
+    pub fn new(offset: u16, length: u16) -> Self {
+        Self { offset, length }
+    }
+
+    pub fn offset(&self) -> u16 {
+        self.offset
+    }
+
+    pub fn length(&self) -> u16 {
+        self.length
+    }
+}
+
 impl PageHeader {
-    pub fn new(page_type: u8, free_space_offset: u16) -> Self {
-        Self { page_type, record_count: 0, free_space_offset }
+    pub fn new(page_type: u8, free_space_offset: u16, slot_directory_offset: u16) -> Self {
+        Self { page_type, record_count: 0, free_space_offset, slot_directory_offset }
     }
 
     pub fn page_type(&self) -> u8 {
@@ -33,6 +55,10 @@ impl PageHeader {
 
     pub fn free_space_offset(&self) -> u16 {
         self.free_space_offset
+    }
+
+    pub fn slot_directory_offset(&self) -> u16 {
+        self.slot_directory_offset
     }
 
     pub fn to_bytes(&self) -> [u8; PAGE_HEADER_SIZE] {
@@ -48,11 +74,13 @@ impl PageHeader {
     pub fn from_bytes(data: [u8; PAGE_HEADER_SIZE]) -> Self {
         let record_count = u16::from_le_bytes([data[1], data[2]]);
         let free_space_offset = u16::from_le_bytes([data[3], data[4]]);
+        let slot_directory_offset = u16::from_le_bytes([data[5], data[6]]);
 
         Self {
             page_type: data[0],
             record_count,
             free_space_offset,
+            slot_directory_offset
         }
     }
 }
@@ -61,7 +89,7 @@ impl Page {
     pub fn new(id: PageId) -> Self {
         Self {
             id,
-            header: PageHeader::new(0, PAGE_HEADER_SIZE as u16),
+            header: PageHeader::new(0, PAGE_HEADER_SIZE as u16, PAGE_SIZE as u16),
             data: [0; PAGE_DATA_SIZE],
         }
     }
@@ -80,6 +108,24 @@ impl Page {
 
     pub fn data_mut(&mut self) -> &mut [u8] {
         &mut self.data
+    }
+
+    pub fn insert_record(&mut self, record: &[u8]) -> Result<(), BmsqlError> {
+        let offset = self.header.free_space_offset() as usize - PAGE_HEADER_SIZE;
+        let end = offset + record.len();
+
+        if end > PAGE_DATA_SIZE {
+            return Err(BmsqlError::InvalidInput(
+                "record does not fit in page".to_string(),
+            ));
+        }
+
+        self.data[offset..end].copy_from_slice(record);
+
+        self.header.record_count += 1;
+        self.header.free_space_offset = (end + PAGE_HEADER_SIZE) as u16;
+
+        Ok(())
     }
 
     pub fn from_data(id: PageId, data: [u8; PAGE_SIZE]) -> Self {
@@ -213,16 +259,17 @@ mod tests {
 
     #[test]
     fn page_header_has_correct_values() {
-        let header = PageHeader::new(1, 5);
+        let header = PageHeader::new(1, 5, PAGE_SIZE as u16);
 
         assert_eq!(header.page_type(), 1);
         assert_eq!(header.record_count(), 0);
         assert_eq!(header.free_space_offset(), 5);
+        assert_eq!(header.slot_directory_offset(), PAGE_SIZE as u16);
     }
 
     #[test]
     fn page_header_has_correct_size() {
-        assert_eq!(PAGE_HEADER_SIZE, 5);
+        assert_eq!(PAGE_HEADER_SIZE, 7);
     }
 
     #[test]
@@ -243,7 +290,7 @@ mod tests {
 
     #[test]
     fn page_header_can_be_serialized() {
-        let header = PageHeader::new(1, 5);
+        let header = PageHeader::new(1, 5, PAGE_SIZE as u16);
 
         let data = header.to_bytes();
 
@@ -265,7 +312,7 @@ mod tests {
 
     #[test]
     fn page_header_can_be_deserialized() {
-        let header = PageHeader::new(1, 5);
+        let header = PageHeader::new(1, 5, PAGE_SIZE as u16);
 
         let data = header.to_bytes();
         let restored = PageHeader::from_bytes(data);
@@ -277,7 +324,7 @@ mod tests {
 
     #[test]
     fn page_from_data_preserves_header() {
-        let header = PageHeader::new(1, 100);
+        let header = PageHeader::new(1, 100, PAGE_SIZE as u16);
 
         let mut data = [0u8; PAGE_SIZE];
 
@@ -288,5 +335,64 @@ mod tests {
         assert_eq!(page.header.page_type(), 1);
         assert_eq!(page.header.record_count(), 0);
         assert_eq!(page.header.free_space_offset(), 100);
+    }
+
+    #[test]
+    fn page_can_insert_record() {
+        let mut page = Page::new(0);
+
+        let record = b"hello";
+
+        page.insert_record(record).unwrap();
+
+        assert_eq!(&page.data()[0..5], b"hello");
+        assert_eq!(page.header.record_count(), 1);
+        assert_eq!(page.header.free_space_offset(), 12);
+    }
+
+    #[test]
+    fn page_can_insert_multiple_records() {
+        let mut page = Page::new(0);
+
+        page.insert_record(b"hello").unwrap();
+        page.insert_record(b"world").unwrap();
+
+        assert_eq!(&page.data()[0..5], b"hello");
+        assert_eq!(&page.data()[5..10], b"world");
+
+        assert_eq!(page.header.record_count(), 2);
+        assert_eq!(page.header.free_space_offset(), 17);
+    }
+
+    #[test]
+    fn page_rejects_record_when_not_enough_space() {
+        let mut page = Page::new(0);
+
+        let record = vec![0u8; PAGE_DATA_SIZE + 1];
+
+        let result = page.insert_record(&record);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn page_inserts_records_after_existing_data(){
+        let mut page = Page::new(0);
+
+        page.insert_record(b"hello").unwrap();
+        page.insert_record(b"BMsql").unwrap();
+
+        assert_eq!(&page.data()[0..5], b"hello");
+        assert_eq!(&page.data()[5..10], b"BMsql");
+        assert_eq!(page.header.record_count(), 2);
+        assert_eq!(page.header.free_space_offset(), 17);
+    }
+
+    #[test]
+    fn slot_has_correct_values() {
+        let slot = Slot::new(7, 5);
+
+        assert_eq!(slot.offset(), 7);
+        assert_eq!(slot.length(), 5);
     }
 }
