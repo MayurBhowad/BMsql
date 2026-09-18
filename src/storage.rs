@@ -18,7 +18,7 @@ impl DatabaseFile {
 
         self.file.seek(SeekFrom::Start(offset))?;
 
-        self.file.write_all(page.data())?;
+        self.file.write_all(&page.to_bytes())?;
 
         Ok(())
     }

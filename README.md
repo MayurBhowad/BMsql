@@ -17,7 +17,7 @@ A relational database engine built in Rust from first principles. BMsql is devel
 | **Language** | Rust (2024 edition) |
 | **Dependencies** | None |
 
-At v0.3.0, BMsql provides a library crate with an in-memory `Database` type, a `BmsqlError` type, a fixed-size `Page` abstraction (4096 bytes), a `DatabaseFile` storage layer, and a `Pager` with a bounded FIFO page cache (capacity required at open), page read/write, file size, page count, and page allocation. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. The CLI prints the database name. There is no row storage or SQL yet.
+At v0.3.0, BMsql provides a library crate with an in-memory `Database` type, a `BmsqlError` type, a fixed-size `Page` (4096 bytes) with a 5-byte `PageHeader`, a `DatabaseFile` storage layer, and a `Pager` with a bounded FIFO page cache, page read/write, file size, page count, and page allocation. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. The CLI prints the database name. There is no row storage or SQL yet.
 
 ---
 
@@ -71,7 +71,7 @@ BMsql/
 │   ├── lib.rs                  # Library root (exports database, error, page, pager, storage)
 │   ├── database.rs             # Database type; create/open database file helpers
 │   ├── error.rs                # BmsqlError type
-│   ├── page.rs                 # Page type (PAGE_SIZE, Clone, page_offset, from_data)
+│   ├── page.rs                 # Page + PageHeader (serialize/deserialize, page_offset)
 │   ├── storage.rs              # DatabaseFile (open, write_page, read_page, size)
 │   ├── pager.rs                # Pager (FIFO cache, read/write, size, page_count, allocate_page)
 │   └── main.rs                 # CLI entry point

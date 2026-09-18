@@ -4,7 +4,7 @@
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v0.3.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` abstraction (`PAGE_SIZE` = 4096), a `DatabaseFile` storage layer, and a `Pager` with a bounded FIFO page cache plus page read/write, size, page count, and page allocation. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. It does not yet provide row storage or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v0.3.0, BMsql includes an in-memory `Database` type, a shared `BmsqlError` type, a fixed-size `Page` with a 5-byte `PageHeader`, a `DatabaseFile` storage layer, and a `Pager` with a bounded FIFO page cache plus page read/write, size, page count, and page allocation. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. It does not yet provide row storage or SQL.
 
 ---
 
@@ -28,8 +28,10 @@ This guide covers how to install, build, run, and verify BMsql at its current re
 BMsql v0.3.0 is the **Pager** milestone:
 
 - A working Rust/Cargo project (crate name: `bmsql`, version `0.3.0`)
-- A library crate with `Database`, `BmsqlError`, `Page`, `DatabaseFile`, and `Pager` types
-- A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) identified by `PageId` (`u64`), zero-initialized on creation, with `Clone`, `data` / `data_mut` and `from_data`
+- A library crate with `Database`, `BmsqlError`, `Page`, `PageHeader`, `DatabaseFile`, and `Pager` types
+- A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) with a 5-byte header (`PAGE_HEADER_SIZE`) and `PAGE_DATA_SIZE` payload bytes
+- `PageHeader`: `page_type` (u8), `record_count` (u16 LE), `free_space_offset` (u16 LE); serialize via `to_bytes` / `from_bytes`
+- `Page::to_bytes` / `from_data` round-trip the full 4096-byte on-disk layout (header + data)
 - `page_offset(page_id)` maps a page ID to a byte offset (`page_id * PAGE_SIZE`)
 - `create_database_file` and `open_database_file` helpers for a database file on disk
 - `DatabaseFile::open`, `write_page`, `read_page`, and `size` — low-level page I/O (returns `BmsqlError` on failure)
@@ -135,10 +137,10 @@ Run the test suite:
 cargo test
 ```
 
-At v0.3.0, the library tests cover `Database`, `Page`, `DatabaseFile`, and `Pager` (including page allocation and a bounded FIFO page cache). One integration test checks the database name. A successful run looks like:
+At v0.3.0, the library tests cover `Database`, `Page` / `PageHeader` (including serialization), `DatabaseFile`, and `Pager` (including page allocation and a bounded FIFO page cache). One integration test checks the database name. A successful run looks like:
 
 ```text
-running 37 tests
+running 45 tests
 test database::tests::database_can_be_created ... ok
 test page::tests::page_has_correct_size ... ok
 test page::tests::new_page_contains_zeroes ... ok
@@ -150,6 +152,14 @@ test page::tests::database_file_can_store_bytes ... ok
 test page::tests::database_file_can_read_bytes ... ok
 test page::tests::page_can_be_written_to_database_file ... ok
 test page::tests::file_can_seek_to_page_offset ... ok
+test page::tests::page_header_has_correct_values ... ok
+test page::tests::page_header_has_correct_size ... ok
+test page::tests::page_from_data_preserves_data_after_header ... ok
+test page::tests::page_total_size_is_4096_bytes ... ok
+test page::tests::page_header_can_be_serialized ... ok
+test page::tests::page_can_be_serialized_to_4096_bytes ... ok
+test page::tests::page_header_can_be_deserialized ... ok
+test page::tests::page_from_data_preserves_header ... ok
 test storage::tests::database_file_can_be_opened ... ok
 test storage::tests::database_file_can_write_page ... ok
 test storage::tests::database_file_can_write_multiple_pages ... ok
@@ -177,7 +187,7 @@ test pager::tests::writing_cached_page_does_not_increase_cache_size ... ok
 test pager::tests::pager_evicts_oldest_cached_page ... ok
 test pager::tests::pager_rejects_zero_size_capacity ... ok
 
-test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
@@ -214,7 +224,9 @@ Release builds are faster at runtime but take longer to compile. For development
 | Test command runs with `cargo test` | Yes |
 | `Database` type (in-memory, name only) | Yes |
 | `BmsqlError` type (`Io`, `InvalidInput`) | Yes |
-| `Page` type (`PAGE_SIZE` = 4096, `PageId`, `Clone`, zero-init, `data_mut`, `from_data`) | Yes |
+| `Page` type (`PAGE_SIZE` = 4096, `PageId`, `Clone`, `to_bytes` / `from_data`) | Yes |
+| `PageHeader` (5 bytes: page_type, record_count, free_space_offset) | Yes |
+| `PageHeader` / `Page` serialize and deserialize | Yes |
 | Page offset from page ID (`page_offset`) | Yes |
 | Create and open a database file (helpers) | Yes |
 | `DatabaseFile::open` / `write_page` / `read_page` / `size` | Yes |
