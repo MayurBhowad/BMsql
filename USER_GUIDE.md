@@ -4,7 +4,7 @@
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v0.4.0, BMsql adds structured page layout and basic record insertion on top of the pager: a 7-byte `PageHeader`, a `Slot` type (`SLOT_SIZE` = 4), and `Page::insert_record`. It does not yet provide a record scan/read-by-slot API, tables/schemas, or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v0.4.0, BMsql adds structured page layout and slotted record insertion on top of the pager: a 7-byte `PageHeader`, a `Slot` type (`SLOT_SIZE` = 4) with serialize/deserialize, and `Page::insert_record` that writes record bytes and a slot directory entry growing down from the end of the page. It does not yet provide a record read-by-slot API, tables/schemas, or SQL.
 
 ---
 
@@ -29,16 +29,17 @@ BMsql v0.4.0 is the **Row Storage** milestone:
 
 - A working Rust/Cargo project (crate name: `bmsql`, version `0.4.0`)
 - A library crate with `Database`, `BmsqlError`, `Page`, `PageHeader`, `Slot`, `DatabaseFile`, and `Pager` types
-- A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) with a 7-byte header (`PAGE_HEADER_SIZE`) and `PAGE_DATA_SIZE` payload bytes
-- `PageHeader`: `page_type` (u8), `record_count` (u16 LE), `free_space_offset` (u16 LE), `slot_directory_offset` (u16 LE)
-- `Slot`: `offset` and `length` (each u16); `SLOT_SIZE` = 4
-- `Page::insert_record` appends record bytes into free space, increments `record_count`, and advances `free_space_offset`; returns `BmsqlError::InvalidInput` if the record does not fit
+- A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) with a 7-byte header (`PAGE_HEADER_SIZE`) and `PAGE_DATA_SIZE` payload bytes; maintains an in-memory `slots` list
+- `PageHeader`: `page_type` (u8), `record_count` (u16 LE), `free_space_offset` (u16 LE), `slot_directory_offset` (u16 LE; starts at `PAGE_SIZE` and grows down)
+- `Slot`: `offset` and `length` (each u16); `SLOT_SIZE` = 4; `to_bytes` / `from_bytes`
+- `Page::insert_record` appends record bytes into free space, creates a slot, writes it into the slot directory, updates `record_count` / `free_space_offset` / `slot_directory_offset`; returns `BmsqlError::InvalidInput` if the record does not fit
+- `Page::slot_count` and `Page::slots(index)` for inspecting slots
 - `Page::to_bytes` / `from_data` round-trip the on-disk layout (header + data)
 - `page_offset(page_id)` maps a page ID to a byte offset (`page_id * PAGE_SIZE`)
-- `DatabaseFile` and `Pager` from v0.3.0 (page I/O, FIFO cache, size, page count, allocate)
+- `DatabaseFile` and `Pager` from earlier milestones (page I/O, FIFO cache, size, page count, allocate)
 - A CLI entry point (`cargo run`) that prints the database name
 
-There is no record read-by-slot or scan API, no tables/schemas, and no query language yet.
+There is no API to read a record’s bytes by slot index, no tables/schemas, and no query language yet.
 
 ---
 
@@ -130,38 +131,27 @@ Run the test suite:
 cargo test
 ```
 
-At v0.4.0, the library tests cover pager/storage behavior plus page header layout, slots, and record insertion. One integration test checks the database name. A successful run looks like:
+At v0.4.0, the library tests cover pager/storage behavior plus page header layout, slot serialize/deserialize, slotted insert, and slot directory placement. One integration test checks the database name. A successful run looks like:
 
 ```text
-running 50 tests
-test database::tests::database_can_be_created ... ok
-test page::tests::page_has_correct_size ... ok
-test page::tests::new_page_contains_zeroes ... ok
-test page::tests::page_has_correct_id ... ok
-test page::tests::page_id_has_correct_offset ... ok
-test page::tests::database_file_can_be_created ... ok
-test page::tests::existing_database_file_can_be_opened ... ok
-test page::tests::database_file_can_store_bytes ... ok
-test page::tests::database_file_can_read_bytes ... ok
-test page::tests::page_can_be_written_to_database_file ... ok
-test page::tests::file_can_seek_to_page_offset ... ok
-test page::tests::page_header_has_correct_values ... ok
-test page::tests::page_header_has_correct_size ... ok
-test page::tests::page_from_data_preserves_data_after_header ... ok
-test page::tests::page_total_size_is_4096_bytes ... ok
-test page::tests::page_header_can_be_serialized ... ok
-test page::tests::page_can_be_serialized_to_4096_bytes ... ok
-test page::tests::page_header_can_be_deserialized ... ok
-test page::tests::page_from_data_preserves_header ... ok
+running 59 tests
+...
 test page::tests::page_can_insert_record ... ok
 test page::tests::page_can_insert_multiple_records ... ok
 test page::tests::page_rejects_record_when_not_enough_space ... ok
-test page::tests::page_inserts_records_after_existing_data ... ok
 test page::tests::slot_has_correct_values ... ok
-test storage::tests::... ... ok
-test pager::tests::... ... ok
+test page::tests::slot_can_be_serialized ... ok
+test page::tests::slot_can_be_deserialized ... ok
+test page::tests::slot_round_trip ... ok
+test page::tests::new_page_has_no_slots ... ok
+test page::tests::page_insert_creates_slot ... ok
+test page::tests::page_insert_moves_solt_directory ... ok
+test page::tests::page_insert_moves_slot_directory_for_multiple_records ... ok
+test page::tests::page_stores_slot_in_data ... ok
+test page::tests::page_stores_multiple_slots_in_data ... ok
+...
 
-test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 59 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
@@ -169,7 +159,7 @@ test database_has_name ... ok
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```
 
-(Storage and pager tests from v0.3.0 remain; names abbreviated above as `...`.)
+(Other page, storage, and pager tests omitted above as `...`.)
 
 ---
 
@@ -201,9 +191,10 @@ Release builds are faster at runtime but take longer to compile. For development
 | Pager / `DatabaseFile` (I/O, FIFO cache, size, allocate) | Yes |
 | `Page` (`PAGE_SIZE` = 4096, `to_bytes` / `from_data`) | Yes |
 | `PageHeader` (7 bytes, including `slot_directory_offset`) | Yes |
-| `Slot` (offset + length, `SLOT_SIZE` = 4) | Yes |
-| `Page::insert_record` (append; reject if no space) | Yes |
-| Record read-by-slot / scan API | No |
+| `Slot` (offset + length; `to_bytes` / `from_bytes`) | Yes |
+| `Page::insert_record` (append + slot directory entry) | Yes |
+| `Page::slot_count` / `Page::slots(index)` | Yes |
+| Record read-by-slot (fetch bytes via slot) | No |
 | Tables, schemas, or SQL | No |
 | Version set to 0.4.0 in `Cargo.toml` | Yes |
 

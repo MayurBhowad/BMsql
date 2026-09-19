@@ -24,6 +24,7 @@ pub struct Page {
     id: PageId,
     header: PageHeader,
     data: [u8; PAGE_DATA_SIZE],
+    slots: Vec<Slot>,
 }
 
 impl Slot {
@@ -37,6 +38,22 @@ impl Slot {
 
     pub fn length(&self) -> u16 {
         self.length
+    }
+
+    pub fn to_bytes(&self) -> [u8; SLOT_SIZE] {
+        let mut data = [0u8; SLOT_SIZE];
+
+        data[0..2].copy_from_slice(&self.offset.to_le_bytes());
+        data[2..4].copy_from_slice(&self.length.to_le_bytes());
+
+        data
+    }
+
+    pub fn from_bytes(data: [u8; SLOT_SIZE]) -> Self {
+        let offset = u16::from_le_bytes([data[0], data[1]]);
+        let length = u16::from_le_bytes([data[2], data[3]]);
+
+        Self { offset, length }
     }
 }
 
@@ -91,6 +108,7 @@ impl Page {
             id,
             header: PageHeader::new(0, PAGE_HEADER_SIZE as u16, PAGE_SIZE as u16),
             data: [0; PAGE_DATA_SIZE],
+            slots: Vec::new(),
         }
     }
 
@@ -125,6 +143,17 @@ impl Page {
         self.header.record_count += 1;
         self.header.free_space_offset = (end + PAGE_HEADER_SIZE) as u16;
 
+        let slot = Slot::new(
+            self.header.free_space_offset() - record.len() as u16,
+            record.len() as u16,
+        );
+
+        self.header.slot_directory_offset -= SLOT_SIZE as u16;
+
+        self.write_slot(slot);
+
+        self.slots.push(slot);
+
         Ok(())
     }
 
@@ -137,6 +166,7 @@ impl Page {
             id,
             header: PageHeader::from_bytes(data[..PAGE_HEADER_SIZE].try_into().unwrap()),
             data: page_data,
+            slots: Vec::new(),
         }
     }
 
@@ -147,6 +177,22 @@ impl Page {
         data[PAGE_HEADER_SIZE..].copy_from_slice(&self.data);
 
         data
+    }
+
+    pub fn slot_count(&self) -> usize {
+        self.slots.len()
+    }
+
+    pub fn slots(&self, index: usize) -> Option<Slot> {
+        self.slots.get(index).cloned()
+    }
+
+    fn write_slot(&mut self, slot: Slot) {
+        let slot_data = slot.to_bytes();
+
+        let slot_directory_offset = self.header.slot_directory_offset() as usize - PAGE_HEADER_SIZE;
+
+        self.data[slot_directory_offset..slot_directory_offset + SLOT_SIZE].copy_from_slice(&slot_data);
     }
 }
 
@@ -394,5 +440,111 @@ mod tests {
 
         assert_eq!(slot.offset(), 7);
         assert_eq!(slot.length(), 5);
+    }
+
+    #[test]
+    fn slot_can_be_serialized() {
+        let slot = Slot::new(7, 5);
+
+        let data = slot.to_bytes();
+
+        assert_eq!(&data[0..2], &7u16.to_le_bytes());
+        assert_eq!(&data[2..4], &5u16.to_le_bytes());
+    }
+
+    #[test]
+    fn slot_can_be_deserialized() {
+        let data = [
+            7u16.to_le_bytes()[0],
+            7u16.to_le_bytes()[1],
+            5u16.to_le_bytes()[0],
+            5u16.to_le_bytes()[1],
+        ];
+
+        let slot = Slot::from_bytes(data);
+
+        assert_eq!(slot.offset(), 7);
+        assert_eq!(slot.length(), 5);
+    }
+
+    #[test]
+    fn slot_round_trip() {
+        let original = Slot::new(123, 45);
+
+        let date = original.to_bytes();
+        let restored = Slot::from_bytes(date);
+
+        assert_eq!(restored.offset(), 123);
+        assert_eq!(restored.length(), 45);
+    }
+
+    #[test]
+    fn new_page_has_no_slots() {
+        let page = Page::new(1);
+
+        assert_eq!(page.slot_count(), 0);
+    }
+
+    #[test]
+    fn page_insert_creates_slot() {
+        let mut page = Page::new(1);
+
+        page.insert_record(b"hello").unwrap();
+
+        let slot = page.slots(0).unwrap();
+
+        assert_eq!(slot.offset(), 7);
+        assert_eq!(slot.length(), 5);
+    }
+
+    #[test]
+    fn page_insert_moves_solt_directory() {
+        let mut page = Page::new(1);
+        page.insert_record(b"hello").unwrap();
+        assert_eq!(page.header.slot_directory_offset(), 4092);
+    }
+
+    #[test]
+    fn page_insert_moves_slot_directory_for_multiple_records() {
+        let mut page = Page::new(1);
+
+        page.insert_record(b"hello").unwrap();
+        assert_eq!(page.header.slot_directory_offset(), 4092);
+
+        page.insert_record(b"world").unwrap();
+        assert_eq!(page.header.slot_directory_offset(), 4088);
+    }
+
+    #[test]
+    fn page_stores_slot_in_data() {
+        let mut page = Page::new(1);
+        page.insert_record(b"hello").unwrap();
+        let data = page.data();
+        let slot_offset = 4092 - PAGE_HEADER_SIZE;
+
+        assert_eq!(
+            &data[slot_offset..slot_offset + SLOT_SIZE],
+            &Slot::new(7, 5).to_bytes()
+        );
+    }
+
+    #[test]
+    fn page_stores_multiple_slots_in_data() {
+        let mut page = Page::new(1);
+
+        page.insert_record(b"hello").unwrap();
+        page.insert_record(b"world").unwrap();
+        let data = page.data();
+        let first_slot_offset = 4092 - PAGE_HEADER_SIZE;
+        let second_slot_offset = 4088 - PAGE_HEADER_SIZE;
+
+        assert_eq!(
+            &data[first_slot_offset..first_slot_offset + SLOT_SIZE],
+            &Slot::new(7, 5).to_bytes()
+        );
+        assert_eq!(
+            &data[second_slot_offset..second_slot_offset + SLOT_SIZE],
+            &Slot::new(12, 5).to_bytes()
+        );
     }
 }
