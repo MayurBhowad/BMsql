@@ -1,6 +1,6 @@
 # BMsql
 
-**v0.3.0 — Phase 2: Pager**
+**v0.4.0 — Phase 3: Row Storage**
 
 A relational database engine built in Rust from first principles. BMsql is developed in phased milestones — each release adds one layer of capability on top of a tested foundation.
 
@@ -12,12 +12,12 @@ A relational database engine built in Rust from first principles. BMsql is devel
 
 | | |
 |---|---|
-| **Version** | v0.3.0 |
-| **Phase** | 2 — Pager |
+| **Version** | v0.4.0 |
+| **Phase** | 3 — Row Storage |
 | **Language** | Rust (2024 edition) |
 | **Dependencies** | None |
 
-At v0.3.0, BMsql provides a library crate with an in-memory `Database` type, a `BmsqlError` type, a fixed-size `Page` (4096 bytes) with a 5-byte `PageHeader`, a `DatabaseFile` storage layer, and a `Pager` with a bounded FIFO page cache, page read/write, file size, page count, and page allocation. Page data persists across reopen; reading a missing page returns `BmsqlError::Io`. The CLI prints the database name. There is no row storage or SQL yet.
+At v0.4.0, BMsql builds on the pager with slotted row storage: a 7-byte `PageHeader`, a `Slot` type, `Page::insert_record` / `Page::read_record`, and slot directory rebuild on `from_data`. Records survive page serialize/deserialize and database reopen. The `Pager` still provides a bounded FIFO page cache, page I/O, size, page count, and allocation. The CLI prints the database name. There are no tables/schemas or SQL yet.
 
 ---
 
@@ -66,12 +66,12 @@ BMsql (**BM** = Builder / Mayur project identity, **sql** = relational query lan
 
 ```text
 BMsql/
-├── Cargo.toml                  # Package manifest (version 0.3.0, crate name: bmsql)
+├── Cargo.toml                  # Package manifest (version 0.4.0, crate name: bmsql)
 ├── src/
 │   ├── lib.rs                  # Library root (exports database, error, page, pager, storage)
 │   ├── database.rs             # Database type; create/open database file helpers
 │   ├── error.rs                # BmsqlError type
-│   ├── page.rs                 # Page + PageHeader (serialize/deserialize, page_offset)
+│   ├── page.rs                 # Page, PageHeader, Slot; insert_record / read_record
 │   ├── storage.rs              # DatabaseFile (open, write_page, read_page, size)
 │   ├── pager.rs                # Pager (FIFO cache, read/write, size, page_count, allocate_page)
 │   └── main.rs                 # CLI entry point
