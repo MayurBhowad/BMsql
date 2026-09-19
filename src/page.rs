@@ -132,7 +132,7 @@ impl Page {
         let offset = self.header.free_space_offset() as usize - PAGE_HEADER_SIZE;
         let end = offset + record.len();
 
-        if end > PAGE_DATA_SIZE {
+        if (end + PAGE_HEADER_SIZE + SLOT_SIZE) > self.header.slot_directory_offset() as usize {
             return Err(BmsqlError::InvalidInput(
                 "record does not fit in page".to_string(),
             ));
@@ -162,11 +162,21 @@ impl Page {
 
         page_data.copy_from_slice(&data[PAGE_HEADER_SIZE..]);
 
+        let header = PageHeader::from_bytes(data[..PAGE_HEADER_SIZE].try_into().unwrap());
+        let mut slots = Vec::new();
+
+        for i in 0..header.record_count() as usize {
+            let offset = PAGE_SIZE - ((i + 1) * SLOT_SIZE);
+            let data_offset = offset - PAGE_HEADER_SIZE;
+            let slot_data = page_data[data_offset..data_offset + SLOT_SIZE].try_into().unwrap();
+            slots.push(Slot::from_bytes(slot_data));
+        }
+
         Self {
             id,
-            header: PageHeader::from_bytes(data[..PAGE_HEADER_SIZE].try_into().unwrap()),
+            header,
             data: page_data,
-            slots: Vec::new(),
+            slots,
         }
     }
 
@@ -193,6 +203,14 @@ impl Page {
         let slot_directory_offset = self.header.slot_directory_offset() as usize - PAGE_HEADER_SIZE;
 
         self.data[slot_directory_offset..slot_directory_offset + SLOT_SIZE].copy_from_slice(&slot_data);
+    }
+
+    pub fn read_record(&self, index: usize) -> Option<&[u8]> {
+        let slot = self.slots.get(index)?;
+        let offset = slot.offset() as usize - PAGE_HEADER_SIZE;
+        let end = offset + slot.length() as usize;
+
+        Some(&self.data[offset..end])
     }
 }
 
@@ -546,5 +564,95 @@ mod tests {
             &data[second_slot_offset..second_slot_offset + SLOT_SIZE],
             &Slot::new(12, 5).to_bytes()
         );
+    }
+
+    #[test]
+    fn page_rejects_record_when_slot_does_not_fit() {
+        let mut page = Page::new(1);
+        let record = vec![0u8; PAGE_DATA_SIZE - SLOT_SIZE + 1];
+        let result = page.insert_record(&record);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejected_record_does_not_change_page() {
+        let mut page = Page::new(1);
+
+        page.insert_record(b"hello").unwrap();
+
+        let record_count = page.header.record_count();
+        let free_space_offset = page.header.free_space_offset();
+        let slot_directory_offset = page.header.slot_directory_offset();
+        let slot_count = page.slot_count();
+
+        let record = vec![0u8; PAGE_DATA_SIZE];
+
+        let result = page.insert_record(&record);
+
+        assert!(result.is_err());
+        assert_eq!(page.header.record_count(), record_count);
+        assert_eq!(page.header.free_space_offset(), free_space_offset);
+        assert_eq!(page.header.slot_directory_offset(), slot_directory_offset);
+        assert_eq!(page.slot_count(), slot_count);
+    }
+
+    #[test]
+    fn page_can_read_record() {
+        let mut page = Page::new(1);
+        page.insert_record(b"hello").unwrap();
+        let record = page.read_record(0).unwrap();
+        assert_eq!(record, b"hello");
+    }
+
+    #[test]
+    fn page_can_read_multiple_records() {
+        let mut page = Page::new(1);
+
+        page.insert_record(b"hello").unwrap();
+        page.insert_record(b"world").unwrap();
+
+        assert_eq!(page.read_record(0).unwrap(), b"hello");
+        assert_eq!(page.read_record(1).unwrap(), b"world");
+    }
+
+    #[test]
+    fn page_returns_none_for_invalid_record_index() {
+        let mut page = Page::new(1);
+        page.insert_record(b"hello").unwrap();
+        assert!(page.read_record(1).is_none());
+    }
+
+    #[test]
+    fn page_slots_can_survive_serialization() {
+        let mut page = Page::new(1);
+
+        page.insert_record(b"hello").unwrap();
+        page.insert_record(b"world").unwrap();
+
+        let data = page.to_bytes();
+
+        let restored = Page::from_data(1, data);
+
+        assert_eq!(restored.slot_count(), 2);
+
+        let first = restored.slots(0).unwrap();
+        let second = restored.slots(1).unwrap();
+
+        assert_eq!(first.offset(), 7);
+        assert_eq!(first.length(), 5);
+
+        assert_eq!(second.offset(), 12);
+        assert_eq!(second.length(), 5);
+    }
+
+    #[test]
+    fn page_records_survive_serialization() {
+        let mut page = Page::new(1);
+        page.insert_record(b"hello").unwrap();
+        page.insert_record(b"world").unwrap();
+        let data = page.to_bytes();
+        let restored = Page::from_data(1, data);
+        assert_eq!(restored.read_record(0).unwrap(), b"hello");
+        assert_eq!(restored.read_record(1).unwrap(), b"world");
     }
 }

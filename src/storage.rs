@@ -217,4 +217,22 @@ mod tests {
         assert_eq!(database_file.size().unwrap(), 0);
         std::fs::remove_file(path).unwrap();
     }
+
+    #[test]
+    fn page_records_persist_after_reopening_database() {
+        let path = "bmsql_page_records_persist_test.db";
+        File::create(path).unwrap();
+        let mut database_file = DatabaseFile::open(path).unwrap();
+        let mut page = Page::new(0);
+        page.insert_record(b"hello").unwrap();
+        page.insert_record(b"world").unwrap();
+        database_file.write_page(&page).unwrap();
+        drop(database_file);
+        let mut database_file = DatabaseFile::open(path).unwrap();
+        let restored = database_file.read_page(0).unwrap();
+
+        assert_eq!(restored.read_record(0).unwrap(), b"hello");
+        assert_eq!(restored.read_record(1).unwrap(), b"world");
+        std::fs::remove_file(path).unwrap();
+    }
 }

@@ -4,7 +4,7 @@
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v0.4.0, BMsql adds structured page layout and slotted record insertion on top of the pager: a 7-byte `PageHeader`, a `Slot` type (`SLOT_SIZE` = 4) with serialize/deserialize, and `Page::insert_record` that writes record bytes and a slot directory entry growing down from the end of the page. It does not yet provide a record read-by-slot API, tables/schemas, or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v0.4.0, BMsql adds slotted row storage on top of the pager: a 7-byte `PageHeader`, a `Slot` type, `Page::insert_record` / `Page::read_record`, and slot directory rebuild when loading a page via `from_data`. Records survive page serialize/deserialize and database reopen. It does not yet provide tables/schemas or SQL.
 
 ---
 
@@ -32,14 +32,16 @@ BMsql v0.4.0 is the **Row Storage** milestone:
 - A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) with a 7-byte header (`PAGE_HEADER_SIZE`) and `PAGE_DATA_SIZE` payload bytes; maintains an in-memory `slots` list
 - `PageHeader`: `page_type` (u8), `record_count` (u16 LE), `free_space_offset` (u16 LE), `slot_directory_offset` (u16 LE; starts at `PAGE_SIZE` and grows down)
 - `Slot`: `offset` and `length` (each u16); `SLOT_SIZE` = 4; `to_bytes` / `from_bytes`
-- `Page::insert_record` appends record bytes into free space, creates a slot, writes it into the slot directory, updates `record_count` / `free_space_offset` / `slot_directory_offset`; returns `BmsqlError::InvalidInput` if the record does not fit
+- `Page::insert_record` appends record bytes, writes a slot directory entry, and updates header fields; rejects inserts that would collide with the slot directory (`BmsqlError::InvalidInput`) without mutating the page
+- `Page::read_record(index)` returns the record bytes for a slot index (`None` if out of range)
+- `Page::from_data` rebuilds the in-memory slot list from the on-disk slot directory using `record_count`
 - `Page::slot_count` and `Page::slots(index)` for inspecting slots
-- `Page::to_bytes` / `from_data` round-trip the on-disk layout (header + data)
+- `Page::to_bytes` / `from_data` round-trip header, records, and slots
 - `page_offset(page_id)` maps a page ID to a byte offset (`page_id * PAGE_SIZE`)
-- `DatabaseFile` and `Pager` from earlier milestones (page I/O, FIFO cache, size, page count, allocate)
+- `DatabaseFile` and `Pager` (page I/O, FIFO cache, size, page count, allocate); records persist after reopen
 - A CLI entry point (`cargo run`) that prints the database name
 
-There is no API to read a record’s bytes by slot index, no tables/schemas, and no query language yet.
+There are no tables/schemas and no query language yet.
 
 ---
 
@@ -131,27 +133,22 @@ Run the test suite:
 cargo test
 ```
 
-At v0.4.0, the library tests cover pager/storage behavior plus page header layout, slot serialize/deserialize, slotted insert, and slot directory placement. One integration test checks the database name. A successful run looks like:
+At v0.4.0, the library tests cover pager/storage plus slotted insert/read, space checks against the slot directory, and records/slots surviving serialize and reopen. One integration test checks the database name. A successful run looks like:
 
 ```text
-running 59 tests
+running 67 tests
 ...
-test page::tests::page_can_insert_record ... ok
-test page::tests::page_can_insert_multiple_records ... ok
-test page::tests::page_rejects_record_when_not_enough_space ... ok
-test page::tests::slot_has_correct_values ... ok
-test page::tests::slot_can_be_serialized ... ok
-test page::tests::slot_can_be_deserialized ... ok
-test page::tests::slot_round_trip ... ok
-test page::tests::new_page_has_no_slots ... ok
-test page::tests::page_insert_creates_slot ... ok
-test page::tests::page_insert_moves_solt_directory ... ok
-test page::tests::page_insert_moves_slot_directory_for_multiple_records ... ok
-test page::tests::page_stores_slot_in_data ... ok
-test page::tests::page_stores_multiple_slots_in_data ... ok
+test page::tests::page_can_read_record ... ok
+test page::tests::page_can_read_multiple_records ... ok
+test page::tests::page_returns_none_for_invalid_record_index ... ok
+test page::tests::page_slots_can_survive_serialization ... ok
+test page::tests::page_records_survive_serialization ... ok
+test page::tests::page_rejects_record_when_slot_does_not_fit ... ok
+test page::tests::rejected_record_does_not_change_page ... ok
+test storage::tests::page_records_persist_after_reopening_database ... ok
 ...
 
-test result: ok. 59 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 67 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
@@ -192,9 +189,10 @@ Release builds are faster at runtime but take longer to compile. For development
 | `Page` (`PAGE_SIZE` = 4096, `to_bytes` / `from_data`) | Yes |
 | `PageHeader` (7 bytes, including `slot_directory_offset`) | Yes |
 | `Slot` (offset + length; `to_bytes` / `from_bytes`) | Yes |
-| `Page::insert_record` (append + slot directory entry) | Yes |
+| `Page::insert_record` (append + slot directory; reject if no space) | Yes |
+| `Page::read_record(index)` (bytes by slot index) | Yes |
 | `Page::slot_count` / `Page::slots(index)` | Yes |
-| Record read-by-slot (fetch bytes via slot) | No |
+| Slots/records survive `to_bytes` / `from_data` and file reopen | Yes |
 | Tables, schemas, or SQL | No |
 | Version set to 0.4.0 in `Cargo.toml` | Yes |
 
