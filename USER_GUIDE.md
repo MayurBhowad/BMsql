@@ -4,7 +4,7 @@
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v0.4.0, BMsql adds slotted row storage on top of the pager: a 7-byte `PageHeader`, a `Slot` type, `Page::insert_record` / `Page::read_record`, and slot directory rebuild when loading a page via `from_data`. Records survive page serialize/deserialize and database reopen. It does not yet provide tables/schemas or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v0.4.0, BMsql adds slotted row storage on top of the pager: a 7-byte `PageHeader`, a `Slot` type, `Page::insert_record` / `Page::read_record`, and slot directory rebuild when loading a page via `from_data`. Storage also provides `PageManager` for allocate/read/write (allocation persists to disk). Records survive page serialize/deserialize and database reopen. It does not yet provide tables/schemas or SQL.
 
 ---
 
@@ -28,7 +28,7 @@ This guide covers how to install, build, run, and verify BMsql at its current re
 BMsql v0.4.0 is the **Row Storage** milestone:
 
 - A working Rust/Cargo project (crate name: `bmsql`, version `0.4.0`)
-- A library crate with `Database`, `BmsqlError`, `Page`, `PageHeader`, `Slot`, `DatabaseFile`, and `Pager` types
+- A library crate with `Database`, `BmsqlError`, `Page`, `PageHeader`, `Slot`, `DatabaseFile`, `PageManager`, and `Pager` types
 - A `Page` type: fixed-size blocks (`PAGE_SIZE` = 4096) with a 7-byte header (`PAGE_HEADER_SIZE`) and `PAGE_DATA_SIZE` payload bytes; maintains an in-memory `slots` list
 - `PageHeader`: `page_type` (u8), `record_count` (u16 LE), `free_space_offset` (u16 LE), `slot_directory_offset` (u16 LE; starts at `PAGE_SIZE` and grows down)
 - `Slot`: `offset` and `length` (each u16); `SLOT_SIZE` = 4; `to_bytes` / `from_bytes`
@@ -38,7 +38,9 @@ BMsql v0.4.0 is the **Row Storage** milestone:
 - `Page::slot_count` and `Page::slots(index)` for inspecting slots
 - `Page::to_bytes` / `from_data` round-trip header, records, and slots
 - `page_offset(page_id)` maps a page ID to a byte offset (`page_id * PAGE_SIZE`)
-- `DatabaseFile` and `Pager` (page I/O, FIFO cache, size, page count, allocate); records persist after reopen
+- `DatabaseFile` for low-level page I/O
+- `PageManager`: `open`, `allocate_page` (creates and writes the next page to disk), `read_page`, `write_page`, `size`, `page_count`
+- `Pager` (FIFO page cache, read/write, size, page count, allocate-without-write)
 - A CLI entry point (`cargo run`) that prints the database name
 
 There are no tables/schemas and no query language yet.
@@ -133,22 +135,20 @@ Run the test suite:
 cargo test
 ```
 
-At v0.4.0, the library tests cover pager/storage plus slotted insert/read, space checks against the slot directory, and records/slots surviving serialize and reopen. One integration test checks the database name. A successful run looks like:
+At v0.4.0, the library tests cover pager/storage plus slotted insert/read, space checks against the slot directory, records/slots surviving serialize and reopen, and `PageManager` allocate/read/write/page_count. One integration test checks the database name. A successful run looks like:
 
 ```text
-running 67 tests
+running 73 tests
 ...
-test page::tests::page_can_read_record ... ok
-test page::tests::page_can_read_multiple_records ... ok
-test page::tests::page_returns_none_for_invalid_record_index ... ok
-test page::tests::page_slots_can_survive_serialization ... ok
-test page::tests::page_records_survive_serialization ... ok
-test page::tests::page_rejects_record_when_slot_does_not_fit ... ok
-test page::tests::rejected_record_does_not_change_page ... ok
-test storage::tests::page_records_persist_after_reopening_database ... ok
+test storage::tests::page_manager_can_be_opened ... ok
+test storage::tests::page_manager_allocates_first_page_id ... ok
+test storage::tests::page_manager_allocates_sequential_page_ids ... ok
+test storage::tests::allocated_page_persists_after_reopening ... ok
+test storage::tests::page_manager_can_write_page ... ok
+test storage::tests::page_manager_reports_page_count ... ok
 ...
 
-test result: ok. 67 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 73 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 running 1 test
 test database_has_name ... ok
@@ -185,7 +185,8 @@ Release builds are faster at runtime but take longer to compile. For development
 | Project compiles with `cargo build` | Yes |
 | CLI starts with `cargo run` | Yes |
 | Test command runs with `cargo test` | Yes |
-| Pager / `DatabaseFile` (I/O, FIFO cache, size, allocate) | Yes |
+| Pager / `DatabaseFile` (I/O, FIFO cache, size, allocate-without-write) | Yes |
+| `PageManager` (`open`, `allocate_page` writes to disk, `read_page`, `write_page`, `page_count`) | Yes |
 | `Page` (`PAGE_SIZE` = 4096, `to_bytes` / `from_data`) | Yes |
 | `PageHeader` (7 bytes, including `slot_directory_offset`) | Yes |
 | `Slot` (offset + length; `to_bytes` / `from_bytes`) | Yes |
