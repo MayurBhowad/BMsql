@@ -4,7 +4,7 @@
 
 > This guide will be updated as BMsql progresses through each release phase.
 
-This guide covers how to install, build, run, and verify BMsql at its current release. At v0.4.0, BMsql adds slotted row storage on top of the pager: a 7-byte `PageHeader`, a `Slot` type, `Page::insert_record` / `Page::read_record`, and slot directory rebuild when loading a page via `from_data`. Storage also provides `PageManager` for allocate/read/write (allocation persists to disk). Records survive page serialize/deserialize and database reopen. It does not yet provide tables/schemas or SQL.
+This guide covers how to install, build, run, and verify BMsql at its current release. At v0.4.0, BMsql adds slotted row storage on top of the pager: a 7-byte `PageHeader`, a `Slot` type, `Page::insert_record` / `Page::read_record`, and slot directory rebuild when loading a page via `from_data`. Storage is layered as `DatabaseFile` → `PageManager` (on-disk allocate/read/write) → `Pager` (FIFO cache). Records survive page serialize/deserialize and database reopen. It does not yet provide tables/schemas or SQL.
 
 ---
 
@@ -40,7 +40,7 @@ BMsql v0.4.0 is the **Row Storage** milestone:
 - `page_offset(page_id)` maps a page ID to a byte offset (`page_id * PAGE_SIZE`)
 - `DatabaseFile` for low-level page I/O
 - `PageManager`: `open`, `allocate_page` (creates and writes the next page to disk), `read_page`, `write_page`, `size`, `page_count`
-- `Pager` (FIFO page cache, read/write, size, page count, allocate-without-write)
+- `Pager`: wraps `PageManager` with a bounded FIFO page cache; `open(path, cache_capacity)`, `read_page`, `write_page`, `size`, `page_count`, `allocate_page` (delegates to `PageManager`, so allocation is written to disk), `cache_size`
 - A CLI entry point (`cargo run`) that prints the database name
 
 There are no tables/schemas and no query language yet.
@@ -185,8 +185,9 @@ Release builds are faster at runtime but take longer to compile. For development
 | Project compiles with `cargo build` | Yes |
 | CLI starts with `cargo run` | Yes |
 | Test command runs with `cargo test` | Yes |
-| Pager / `DatabaseFile` (I/O, FIFO cache, size, allocate-without-write) | Yes |
+| `DatabaseFile` (low-level page I/O) | Yes |
 | `PageManager` (`open`, `allocate_page` writes to disk, `read_page`, `write_page`, `page_count`) | Yes |
+| `Pager` (FIFO cache over `PageManager`; allocate also writes to disk) | Yes |
 | `Page` (`PAGE_SIZE` = 4096, `to_bytes` / `from_data`) | Yes |
 | `PageHeader` (7 bytes, including `slot_directory_offset`) | Yes |
 | `Slot` (offset + length; `to_bytes` / `from_bytes`) | Yes |

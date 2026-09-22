@@ -1,10 +1,10 @@
 use crate::error::BmsqlError;
 use crate::page::{Page, PageId};
-use crate::storage::DatabaseFile;
+use crate::storage::PageManager;
 use std::collections::HashMap;
 
 pub struct Pager {
-    database_file: DatabaseFile,
+    page_manager: PageManager,
     page_cache: HashMap<PageId, Page>,
     cache_capacity: usize,
     cache_order: Vec<PageId>,
@@ -17,9 +17,9 @@ impl Pager {
                 "cache capacity must be greater than zero".to_string(),
             ));
         }
-        let database_file = DatabaseFile::open(path)?;
+        let page_manager = PageManager::open(path)?;
         Ok(Self {
-            database_file,
+            page_manager,
             page_cache: HashMap::new(),
             cache_capacity,
             cache_order: Vec::new(),
@@ -30,7 +30,7 @@ impl Pager {
         if let Some(page) = self.page_cache.get(&page_id) {
             return Ok(page.clone());
         }
-        let page = self.database_file.read_page(page_id)?;
+        let page = self.page_manager.read_page(page_id)?;
 
         if self.page_cache.len() >= self.cache_capacity {
             let oldest_page_id = self.cache_order.remove(0);
@@ -44,7 +44,7 @@ impl Pager {
     }
 
     pub fn write_page(&mut self, page: &Page) -> Result<(), BmsqlError> {
-        self.database_file.write_page(page)?;
+        self.page_manager.write_page(page)?;
 
         if self.page_cache.contains_key(&page.id()) {
             self.page_cache.insert(page.id(), page.clone());
@@ -62,16 +62,15 @@ impl Pager {
     }
 
     pub fn size(&self) -> Result<u64, BmsqlError> {
-        self.database_file.size()
+        self.page_manager.size()
     }
 
     pub fn page_count(&self) -> Result<u64, BmsqlError> {
         Ok(self.size()? / crate::page::PAGE_SIZE as u64)
     }
 
-    pub fn allocate_page(&self) -> Result<Page, BmsqlError> {
-        let page_count = self.page_count()?;
-        Ok(Page::new(page_count))
+    pub fn allocate_page(&mut self) -> Result<Page, BmsqlError> {
+        self.page_manager.allocate_page()
     }
 
     pub fn cache_size(&self) -> usize {
@@ -82,6 +81,7 @@ impl Pager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::DatabaseFile;
     use std::fs::File;
 
     #[test]
@@ -166,7 +166,7 @@ mod tests {
     fn pager_can_allocate_page() {
         let path = "bmsql_pager_allocate_test.db";
         File::create(path).unwrap();
-        let pager = Pager::open(path, 3).unwrap();
+        let mut pager = Pager::open(path, 3).unwrap();
 
         let page = pager.allocate_page().unwrap();
 
@@ -177,14 +177,14 @@ mod tests {
     }
 
     #[test]
-    fn allocating_page_does_not_write_to_disk() {
-        let path = "bmsql_pager_allocate_no_write_test.db";
+    fn allocating_page_writes_to_disk() {
+        let path = "bmsql_pager_allocate_write_test.db";
         File::create(path).unwrap();
-        let pager = Pager::open(path, 3).unwrap();
+        let mut pager = Pager::open(path, 3).unwrap();
         let _page = pager.allocate_page().unwrap();
 
-        assert_eq!(pager.size().unwrap(), 0);
-        assert_eq!(pager.page_count().unwrap(), 0);
+        assert_eq!(pager.size().unwrap(), crate::page::PAGE_SIZE as u64);
+        assert_eq!(pager.page_count().unwrap(), 1);
 
         std::fs::remove_file(path).unwrap();
     }
@@ -200,7 +200,7 @@ mod tests {
         let page1 = pager.allocate_page().unwrap();
 
         assert_eq!(page1.id(), 1);
-        assert_eq!(pager.page_count().unwrap(), 1);
+        assert_eq!(pager.page_count().unwrap(), 2);
         std::fs::remove_file(path).unwrap();
     }
 

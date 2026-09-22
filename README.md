@@ -17,7 +17,7 @@ A relational database engine built in Rust from first principles. BMsql is devel
 | **Language** | Rust (2024 edition) |
 | **Dependencies** | None |
 
-At v0.4.0, BMsql builds on the pager with slotted row storage: a 7-byte `PageHeader`, a `Slot` type, `Page::insert_record` / `Page::read_record`, and slot directory rebuild on `from_data`. Storage adds `PageManager` for allocate/read/write with on-disk page allocation. Records survive page serialize/deserialize and database reopen. The CLI prints the database name. There are no tables/schemas or SQL yet.
+At v0.4.0, BMsql builds on the pager with slotted row storage: a 7-byte `PageHeader`, a `Slot` type, `Page::insert_record` / `Page::read_record`, and slot directory rebuild on `from_data`. Storage layers are `DatabaseFile` → `PageManager` (allocate/read/write to disk) → `Pager` (FIFO cache over `PageManager`). Records survive page serialize/deserialize and database reopen. The CLI prints the database name. There are no tables/schemas or SQL yet.
 
 ---
 
@@ -73,7 +73,7 @@ BMsql/
 │   ├── error.rs                # BmsqlError type
 │   ├── page.rs                 # Page, PageHeader, Slot; insert_record / read_record
 │   ├── storage.rs              # DatabaseFile + PageManager (allocate/read/write/page_count)
-│   ├── pager.rs                # Pager (FIFO cache, read/write, size, page_count, allocate_page)
+│   ├── pager.rs                # Pager (FIFO cache over PageManager)
 │   └── main.rs                 # CLI entry point
 ├── tests/
 │   └── smoke_test.rs           # Integration test (database name)
