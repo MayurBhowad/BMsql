@@ -66,7 +66,7 @@ impl Pager {
     }
 
     pub fn page_count(&self) -> Result<u64, BmsqlError> {
-        Ok(self.size()? / crate::page::PAGE_SIZE as u64)
+        self.page_manager.page_count()
     }
 
     pub fn allocate_page(&mut self) -> Result<Page, BmsqlError> {
